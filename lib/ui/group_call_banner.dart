@@ -28,10 +28,8 @@ class GroupCallBanner extends RearchConsumer {
         if (marker != null) {
           return _JoinStrip(
             initiator: marker.fromResource,
-            onJoin: () => manager.joinGroupCall(
-              roomBareJid: roomJid,
-              sid: marker.sid,
-            ),
+            onJoin: () =>
+                manager.joinGroupCall(roomBareJid: roomJid, sid: marker.sid),
           );
         }
         return _StartStrip(

@@ -77,7 +77,8 @@ class GroupCallManager extends ChangeNotifier {
 
   /// Returns the "call is happening in this room right now" marker,
   /// or null if none. Used by the UI to show a "Join call" chip.
-  XmppMucCallMarker? openCallIn(String roomBareJid) => _openMarkers[roomBareJid];
+  XmppMucCallMarker? openCallIn(String roomBareJid) =>
+      _openMarkers[roomBareJid];
 
   /// Initiates a new group call in [bubble]. Announces the sid over
   /// MUC and joins the SFU room.
@@ -90,11 +91,7 @@ class GroupCallManager extends ChangeNotifier {
     }
     final sid = _sidGen();
     final roomJid = _mucJidOf(bubble);
-    _xmpp.sendMucCallMarker(
-      roomBareJid: roomJid,
-      state: 'started',
-      sid: sid,
-    );
+    _xmpp.sendMucCallMarker(roomBareJid: roomJid, state: 'started', sid: sid);
     return _joinSfuRoom(roomJid: roomJid, sid: sid, video: video);
   }
 
@@ -113,7 +110,10 @@ class GroupCallManager extends ChangeNotifier {
   /// Leaves the local user's active membership in [roomBareJid]. If
   /// this was the last member the marker on the wire will remain
   /// "started" until whoever hangs up last announces "ended".
-  Future<void> leaveGroupCall(String roomBareJid, {bool announceEnd = false}) async {
+  Future<void> leaveGroupCall(
+    String roomBareJid, {
+    bool announceEnd = false,
+  }) async {
     final call = _joined.remove(roomBareJid);
     if (call == null) return;
     if (announceEnd) {

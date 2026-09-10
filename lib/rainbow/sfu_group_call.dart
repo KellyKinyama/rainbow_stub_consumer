@@ -31,11 +31,13 @@ class SfuGroupCallSession {
 
   /// Emits the current list of remote streams whenever a peer joins
   /// or leaves the SFU room.
-  Stream<List<MediaStream>> get remoteStreams => _remoteStreamsController.stream;
+  Stream<List<MediaStream>> get remoteStreams =>
+      _remoteStreamsController.stream;
 
   /// Most recent snapshot of remote streams; cheap synchronous access
   /// for one-shot reads by the UI.
-  List<MediaStream> get currentRemoteStreams => List.unmodifiable(_remoteStreams);
+  List<MediaStream> get currentRemoteStreams =>
+      List.unmodifiable(_remoteStreams);
 
   /// The underlying peer session. Non-null after [connect] returns.
   RtcSession? get session => _session;
@@ -61,7 +63,11 @@ class SfuGroupCallSession {
   void _onSessionEvent(RtcSessionEvent e) {
     if (_closed) return;
     switch (e) {
-      case RtcLocalIceCandidate(:final candidate, :final sdpMid, :final sdpMLineIndex):
+      case RtcLocalIceCandidate(
+        :final candidate,
+        :final sdpMid,
+        :final sdpMLineIndex,
+      ):
         // target=0 is the publisher connection in ion-sfu's protocol.
         signaling.sendTrickle(
           candidate: candidate,
@@ -89,7 +95,11 @@ class SfuGroupCallSession {
         await session.setRemoteDescription(sdp, isOffer: true);
         final answer = await session.createAnswer();
         await signaling.sendAnswer(sid: sid, answerSdp: answer);
-      case SfuTrickleFromServer(:final candidate, :final sdpMid, :final sdpMLineIndex):
+      case SfuTrickleFromServer(
+        :final candidate,
+        :final sdpMid,
+        :final sdpMLineIndex,
+      ):
         await _session?.addRemoteIceCandidate(
           candidate: candidate,
           sdpMid: sdpMid,
