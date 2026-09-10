@@ -181,13 +181,22 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - `flutter build windows --debug` → clean build in ~31s.
   - Session log: `docs/phase-d-log.md`.
 
-### Phase E — Adopt `flutter_chat_ui` for group chat (S)
+### Phase E — Adopt `flutter_chat_ui` for group chat (S) — ✅ done 2026-09-10
 
-- **Do:**
-  - `BubbleChatPage` → same pattern as Phase D but subscribes to the MUC threadKey.
-  - MUC join still triggered from `initState`.
-  - Include the sender's display name from the roster capsule when converting messages (via `metadata: {senderNick: …}`).
-- **Acceptance:** open the seeded "Rainbow Stub Demo" bubble → send + receive works, sender nicks visible.
+- **Done:**
+  - `BubbleChatPage` rewritten as a thin `RearchConsumer` around `Chat(...)`, reading the MUC thread's `chatControllerCapsule`.
+  - `chatControllerCapsule` now hydrates MAM for MUC threads too — the `!threadKey.contains('@muc.')` guard is gone; the stub routes on the `with` field's domain.
+  - Sender attribution for group messages uses the **resource** part of the from-JID (`room@muc.domain/nick` → `nick`) instead of the local part (which would be the room id itself).
+  - `_toChatUiMessage` refactored: authorId is now derived by the listener (which knows `isGroupChat` per event) and passed in explicitly.
+  - `BubbleChatPage.resolveUser` looks up display names via `rosterCapsule` for known peers, falls back to id-as-name for unknown ids (e.g. bubble members not in your roster).
+- **Hardening (fixes for issues surfaced during test drive):**
+  - Cross-user cache pollution: added a `_cacheGeneration` counter. `resetMessagesCapsuleCache()` bumps it; old rearch-container-managed capsules snapshot the previous generation and short-circuit new events, going dormant instead of polluting the next user's state.
+  - Defensive `insertMessage` index clamp — if some other event source ever pushes the cursor past the actual list size, we clamp to `messages.length` (turning insert into append) instead of crashing with `RangeError`.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new/rewritten files.
+  - `flutter test --exclude-tags=live` → **27/27** pass (Phase E adds 5 tests in `phase_e_bubble_chat_test.dart`: MUC MAM query fires, incoming nick becomes authorId, local group send-echo, MUC MAM chronological hydration, generation guard).
+  - `flutter build windows --debug` → clean build in ~15s.
+  - Session log: `docs/phase-e-log.md`.
 
 ### Phase F — Wire live receipt / typing / read indicators to `flutter_chat_ui`'s status field (S)
 

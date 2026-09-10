@@ -22,10 +22,17 @@ final Map<ThreadKey, Capsule<InMemoryChatController>> _controllersCache = {};
 // stay in sync.
 final Map<ThreadKey, List<void Function(ChatMessage)>> _appenders = {};
 
+// Bumped by [resetMessagesCapsuleCache]. Each capsule closure snapshots
+// this at creation and its listeners drop events after a mismatch — so
+// old rearch-container-managed capsules go dormant on signout instead of
+// polluting a subsequent user's chat state.
+int _cacheGeneration = 0;
+
 /// Family capsule: reactive `List<ChatMessage>` for [threadKey]. Kept for
 /// group chat pages that haven't migrated to [chatControllerCapsule] yet.
 Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
   return _messagesCache.putIfAbsent(threadKey, () {
+    final myGeneration = _cacheGeneration;
     List<ChatMessage> capsule(CapsuleHandle use) {
       final events = use(xmppEventsCapsule);
       final myUserId = use(authCapsule).me?.id;
@@ -33,6 +40,7 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
 
       use.effect(() {
         void append(ChatMessage m) {
+          if (myGeneration != _cacheGeneration) return;
           if (slot.value.any((existing) => existing.id == m.id)) return;
           slot.value = [...slot.value, m];
         }
@@ -44,6 +52,7 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
             .cast<XmppChatMessage>()
             .where((e) => _belongsToThread(e, threadKey))
             .listen((e) {
+              if (myGeneration != _cacheGeneration) return;
               final fromLocal = _localPart(e.from);
               append(
                 ChatMessage(
@@ -75,6 +84,7 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
 /// [messagesCapsule] via the shared appender registry.
 Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
   return _controllersCache.putIfAbsent(threadKey, () {
+    final myGeneration = _cacheGeneration;
     InMemoryChatController capsule(CapsuleHandle use) {
       final events = use(xmppEventsCapsule);
       final xmpp = use(xmppCapsule);
@@ -85,11 +95,13 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         [threadKey],
       );
       final mamCursor = use.data<int>(0);
+      final isMuc = threadKey.contains('@muc.');
 
-      // One-shot MAM hydration when the capsule is first built for this
-      // 1:1 thread. MUC hydration is Phase E.
+      // One-shot MAM hydration when the capsule is first built. Works for
+      // both 1:1 (peer bare JID) and MUC (room bare JID) — the stub routes
+      // on the `with` field's domain.
       use.callonce(() {
-        if (myUserId != null && !threadKey.contains('@muc.')) {
+        if (myUserId != null && myGeneration == _cacheGeneration) {
           Timer.run(() => xmpp.queryMamWith(threadKey, max: 50));
         }
         return null;
@@ -97,14 +109,39 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
 
       use.effect(() {
         Future<void> insertOnce(Message m, {int? index}) async {
+          if (myGeneration != _cacheGeneration) return;
           if (controller.messages.any((existing) => existing.id == m.id)) {
             return;
           }
-          await controller.insertMessage(m, index: index);
+          // Defensive clamp — if some other event source pushed our cursor
+          // past the actual list size we'd otherwise blow up in
+          // List.insert. Cap at length so insert becomes an append.
+          final safeIndex = index == null
+              ? null
+              : (index > controller.messages.length
+                    ? controller.messages.length
+                    : index);
+          await controller.insertMessage(m, index: safeIndex);
+        }
+
+        String senderIdFor(String fromJid, {required bool isGroupChat}) {
+          if (isGroupChat) return _resourcePart(fromJid);
+          return _localPart(fromJid);
+        }
+
+        void insertFromChatMessage(
+          ChatMessage cm, {
+          required bool isGroupChat,
+          int? index,
+        }) {
+          final senderId = cm.isMine
+              ? (myUserId ?? 'me')
+              : senderIdFor(cm.from, isGroupChat: isGroupChat);
+          insertOnce(_toChatUiMessage(cm, senderId), index: index);
         }
 
         void append(ChatMessage cm) {
-          insertOnce(_toChatUiMessage(cm, myUserId));
+          insertFromChatMessage(cm, isGroupChat: isMuc);
         }
 
         _registerAppender(threadKey, append);
@@ -114,16 +151,18 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
             .cast<XmppChatMessage>()
             .where((e) => _belongsToThread(e, threadKey))
             .listen((e) {
-              final fromLocal = _localPart(e.from);
-              append(
+              if (myGeneration != _cacheGeneration) return;
+              final senderId = senderIdFor(e.from, isGroupChat: e.isGroupChat);
+              insertFromChatMessage(
                 ChatMessage(
                   id: e.stanzaId,
                   body: e.body,
                   from: e.from,
                   to: e.to,
                   sentAt: DateTime.now(),
-                  isMine: myUserId != null && fromLocal == myUserId,
+                  isMine: myUserId != null && senderId == myUserId,
                 ),
+                isGroupChat: e.isGroupChat,
               );
             });
 
@@ -134,19 +173,20 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
             .cast<XmppMamMessage>()
             .where((e) => _belongsToMamThread(e, threadKey))
             .listen((e) {
-              final fromLocal = _localPart(e.from);
-              final msg = _toChatUiMessage(
+              if (myGeneration != _cacheGeneration) return;
+              final senderId = senderIdFor(e.from, isGroupChat: e.isGroupChat);
+              insertFromChatMessage(
                 ChatMessage(
                   id: e.stanzaId,
                   body: e.body,
                   from: e.from,
                   to: e.to,
                   sentAt: e.sentAt,
-                  isMine: myUserId != null && fromLocal == myUserId,
+                  isMine: myUserId != null && senderId == myUserId,
                 ),
-                myUserId,
+                isGroupChat: e.isGroupChat,
+                index: mamCursor.value,
               );
-              insertOnce(msg, index: mamCursor.value);
               mamCursor.value = mamCursor.value + 1;
             });
 
@@ -176,22 +216,23 @@ void appendLocalMessage(ThreadKey threadKey, ChatMessage msg) {
   }
 }
 
-/// Test-only: clears family caches and the appender registry.
+/// Clears family caches, the appender registry, and bumps the cache
+/// generation counter — old rearch-container-managed capsules that
+/// snapshot the previous generation will drop future events instead of
+/// polluting the new user's chat state.
 void resetMessagesCapsuleCache() {
   _messagesCache.clear();
   _controllersCache.clear();
   _appenders.clear();
+  _cacheGeneration++;
 }
 
-Message _toChatUiMessage(ChatMessage cm, String? myUserId) {
-  final authorId = cm.isMine ? (myUserId ?? 'me') : _localPart(cm.from);
-  return Message.text(
-    id: cm.id,
-    authorId: authorId,
-    createdAt: cm.sentAt,
-    text: cm.body,
-  );
-}
+Message _toChatUiMessage(ChatMessage cm, String authorId) => Message.text(
+  id: cm.id,
+  authorId: authorId,
+  createdAt: cm.sentAt,
+  text: cm.body,
+);
 
 void _registerAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
   _appenders.putIfAbsent(threadKey, () => []).add(fn);
@@ -219,4 +260,12 @@ String _localPart(String jid) {
   final bare = _bareJid(jid);
   final at = bare.indexOf('@');
   return at >= 0 ? bare.substring(0, at) : bare;
+}
+
+/// Returns the resource part of a full JID (the segment after `/`), which
+/// for MUC messages is the sender's nick — set by our client to the
+/// sender's user id.
+String _resourcePart(String jid) {
+  final slash = jid.indexOf('/');
+  return slash >= 0 ? jid.substring(slash + 1) : jid;
 }
