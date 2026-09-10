@@ -154,4 +154,47 @@ void main() {
       await sub.cancel();
     },
   );
+
+  test('resumable session queues outbound stanzas for retransmit', () {
+    final c = _makeClient()..debugEnableSmResumable('smid-a');
+    expect(c.canResume, isTrue);
+    expect(c.debugOutboundCount, 0);
+
+    c.sendChat(toBareJid: 'bob@localhost', body: 'a', id: 'a1');
+    c.sendChat(toBareJid: 'bob@localhost', body: 'b', id: 'b2');
+    expect(c.debugOutboundCount, 2);
+    expect(c.debugHOut, 2);
+  });
+
+  test('<a h=N/> drains outbound retransmit queue', () async {
+    final c = _makeClient()..debugEnableSmResumable('smid-b');
+
+    c.sendChat(toBareJid: 'bob@localhost', body: 'a', id: 'a1');
+    c.sendChat(toBareJid: 'bob@localhost', body: 'b', id: 'b2');
+    c.sendChat(toBareJid: 'bob@localhost', body: 'c', id: 'c3');
+    expect(c.debugOutboundCount, 3);
+
+    c.debugRouteStanza(_ack(2));
+    await Future<void>.delayed(Duration.zero);
+    expect(c.debugOutboundCount, 1);
+    expect(c.debugPendingAckCount, 1);
+  });
+
+  test('non-resumable SM does NOT populate the retransmit queue', () {
+    final c = _makeClient()..debugEnableSm();
+    expect(c.canResume, isFalse);
+    c.sendChat(toBareJid: 'bob@localhost', body: 'x', id: 'x1');
+    expect(c.debugOutboundCount, 0);
+    // But _pendingAcks still tracks it — resumability is orthogonal.
+    expect(c.debugPendingAckCount, 1);
+  });
+
+  test('resume() throws when no resumable session is known', () async {
+    final c = _makeClient()..debugEnableSm();
+    expect(c.canResume, isFalse);
+    await expectLater(
+      c.resume(email: 'alice@x', saslPassword: 'tkn'),
+      throwsStateError,
+    );
+  });
 }

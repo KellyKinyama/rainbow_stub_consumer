@@ -258,4 +258,93 @@ void main() {
     await alice2.disconnect();
     restAlice.close();
   });
+
+  test(
+    'XEP-0198 resume: after WS drop, resume() picks up where we left off',
+    () async {
+      if (!await _stubUp()) return;
+      final restAlice = RainbowRestClient(config);
+      final restBob = RainbowRestClient(config);
+      final aliceLogin = await restAlice.login(
+        'alice@rainbow-stub.local',
+        'password',
+      );
+      final bobLogin = await restBob.login(
+        'bob@rainbow-stub.local',
+        'password',
+      );
+
+      final alice = RainbowXmppClient(
+        wsUrl: config.wsUrl,
+        domain: config.xmppDomain,
+      );
+      await alice.connect(
+        email: 'alice@rainbow-stub.local',
+        saslPassword: aliceLogin.token,
+        resource: 'flutter-resume',
+      );
+      expect(alice.canResume, isTrue);
+
+      // Send one message and wait for the ack so we have some SM state.
+      final preDropAck = Completer<XmppSentAck>();
+      final sub0 = alice.events.listen((e) {
+        if (e is XmppSentAck && !preDropAck.isCompleted) {
+          preDropAck.complete(e);
+        }
+      });
+      alice.sendChat(
+        toBareJid: '${bobLogin.loggedInUser.id}@${config.xmppDomain}',
+        body: 'pre-drop',
+        id: 'resume-pre-1',
+      );
+      await preDropAck.future.timeout(const Duration(seconds: 5));
+      await sub0.cancel();
+
+      // Simulate an unclean WS drop (no <close/>). SM state is kept.
+      await alice.debugSimulateDrop();
+
+      // Resume — reuses the same JID, so the parked server session
+      // picks us back up. If the server had reaped it we'd get
+      // <failed/> and resume() would throw.
+      await alice.resume(
+        email: 'alice@rainbow-stub.local',
+        saslPassword: aliceLogin.token,
+      );
+
+      // A new send after resume should still round-trip.
+      final bob = RainbowXmppClient(
+        wsUrl: config.wsUrl,
+        domain: config.xmppDomain,
+      );
+      await bob.connect(
+        email: 'bob@rainbow-stub.local',
+        saslPassword: bobLogin.token,
+        resource: 'flutter-resume-bob',
+      );
+
+      final delivered = Completer<XmppChatMessage>();
+      final sub = bob.events.listen((e) {
+        if (e is XmppChatMessage &&
+            e.body == 'post-resume' &&
+            !delivered.isCompleted) {
+          delivered.complete(e);
+        }
+      });
+
+      alice.sendChat(
+        toBareJid: '${bobLogin.loggedInUser.id}@${config.xmppDomain}',
+        body: 'post-resume',
+        id: 'resume-post-1',
+      );
+
+      final msg = await delivered.future.timeout(const Duration(seconds: 5));
+      expect(msg.body, 'post-resume');
+
+      await sub.cancel();
+      await alice.disconnect();
+      await bob.disconnect();
+      restAlice.close();
+      restBob.close();
+    },
+  );
 }

@@ -188,15 +188,28 @@ class RainbowXmppClient {
   // we count every outgoing counted stanza in [_hOut] and every inbound
   // counted stanza in [_hIn]. Body-bearing sends also register in
   // [_pendingAcks] so an incoming `<a h="N"/>` can fan out XmppSentAck.
+  // For resumable sessions [_outbound] retains the raw text of every
+  // counted stanza so a later `<resume/>` can retransmit whatever the
+  // server acknowledges it never saw.
   static const _smNs = 'urn:xmpp:sm:3';
   bool _smEnabled = false;
+  bool _smResumable = false;
+  String _smid = '';
   int _hOut = 0;
   int _hIn = 0;
   final _pendingAcks = <int, String>{};
+  final _outbound = <int, String>{};
+
+  /// True when the last `<enabled/>` announced `resume="true"` and a
+  /// non-empty [_smid] — i.e. a subsequent [resume] call is meaningful.
+  bool get canResume => _smResumable && _smid.isNotEmpty;
 
   /// Write [stanza] to the socket, counting it for XEP-0198 if SM is on.
   void _send(String stanza) {
-    if (_smEnabled) _hOut++;
+    if (_smEnabled) {
+      _hOut++;
+      if (_smResumable) _outbound[_hOut] = stanza;
+    }
     _channel?.sink.add(stanza);
   }
 
@@ -205,11 +218,30 @@ class RainbowXmppClient {
   @visibleForTesting
   void debugEnableSm() => _smEnabled = true;
   @visibleForTesting
+  void debugEnableSmResumable(String smid) {
+    _smEnabled = true;
+    _smResumable = true;
+    _smid = smid;
+  }
+  @visibleForTesting
   int get debugHOut => _hOut;
   @visibleForTesting
   int get debugHIn => _hIn;
   @visibleForTesting
   int get debugPendingAckCount => _pendingAcks.length;
+  @visibleForTesting
+  int get debugOutboundCount => _outbound.length;
+  @visibleForTesting
+  Future<void> debugSimulateDrop() async {
+    // Close the channel without emitting `<close/>` or clearing SM
+    // state — simulates a raw TCP drop so `resume()` becomes viable.
+    try {
+      await _sub?.cancel();
+      await _channel?.sink.close();
+    } catch (_) {}
+    _channel = null;
+    _fullJid = '';
+  }
   @visibleForTesting
   void debugRouteStanza(XmlElement el) => _routeStanza(el);
 
@@ -303,7 +335,9 @@ class RainbowXmppClient {
     // XEP-0198 stream management. Best-effort: if the server doesn't
     // answer <enabled/> within 3s we silently fall back to a plain
     // stream (sender-side "sent" status will simply stay `sending`).
-    ch.sink.add('<enable xmlns="$_smNs"/>');
+    // We ask for `resume="true"` so a later [resume] call can pick up
+    // where we left off after a WS drop.
+    ch.sink.add('<enable xmlns="$_smNs" resume="true"/>');
     try {
       final smResp = await incoming.stream
           .firstWhere(
@@ -312,13 +346,146 @@ class RainbowXmppClient {
                 (e.localName == 'enabled' || e.localName == 'failed'),
           )
           .timeout(const Duration(seconds: 3));
-      _smEnabled = smResp.localName == 'enabled';
+      if (smResp.localName == 'enabled') {
+        _smEnabled = true;
+        _smid = smResp.getAttribute('id') ?? '';
+        final resumeAttr = smResp.getAttribute('resume') ?? '';
+        _smResumable = resumeAttr == 'true' || resumeAttr == '1';
+      } else {
+        _smEnabled = false;
+      }
     } catch (_) {
       _smEnabled = false;
     }
 
     // Initial presence — triggers server-side roster presence probe reply.
     _send('<presence/>');
+
+    _events.add(XmppConnected(_fullJid));
+  }
+
+  /// XEP-0198 §5 stream resumption. Opens a new WS, does SASL, then
+  /// sends `<resume previd="…" h="_hIn"/>` instead of a bind. On
+  /// `<resumed h="N"/>`, retransmits any queued outbound stanzas with
+  /// counter > N and emits [XmppConnected].
+  ///
+  /// Throws [StateError] if [canResume] is false, or if the server
+  /// answers `<failed/>`. Callers should fall back to [connect] in
+  /// that case (which discards all prior SM state).
+  Future<void> resume({
+    required String email,
+    required String saslPassword,
+  }) async {
+    if (!canResume) {
+      throw StateError(
+        'no resumable session — call connect() for a fresh stream',
+      );
+    }
+    // The previd we're about to send. Cleared eagerly so a failed
+    // resume can't be retried against the same (server-reaped) id.
+    final previd = _smid;
+    final resumedH = _hIn;
+
+    HttpClient? io;
+    if (acceptSelfSignedCerts) {
+      io = HttpClient()..badCertificateCallback = (_, _, _) => true;
+    }
+    final ch = IOWebSocketChannel.connect(
+      wsUrl,
+      protocols: const ['xmpp'],
+      customClient: io,
+    );
+    await ch.ready;
+    _channel = ch;
+
+    final incoming = StreamController<XmlElement>.broadcast();
+    _sub = ch.stream.listen(
+      (raw) {
+        final text = raw is List<int> ? utf8.decode(raw) : raw as String;
+        try {
+          incoming.add(XmlDocument.parse(text).rootElement);
+        } on XmlException {
+          // ignore
+        }
+      },
+      onDone: () {
+        if (!incoming.isClosed) incoming.close();
+        _events.add(const XmppDisconnected('ws done'));
+      },
+      onError: (e) {
+        if (!incoming.isClosed) incoming.close();
+        _events.add(XmppDisconnected(e.toString()));
+      },
+    );
+
+    ch.sink.add(
+      '<open xmlns="urn:ietf:params:xml:ns:xmpp-framing" to="$domain" version="1.0"/>',
+    );
+    await incoming.stream
+        .firstWhere(
+          (e) => e.localName == 'features' || e.localName == 'stream:features',
+        )
+        .timeout(const Duration(seconds: 5));
+
+    final payload = base64.encode(
+      utf8.encode('\u0000$email\u0000$saslPassword'),
+    );
+    ch.sink.add(
+      '<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="PLAIN">$payload</auth>',
+    );
+    final saslResp = await incoming.stream
+        .firstWhere((e) => e.localName == 'success' || e.localName == 'failure')
+        .timeout(const Duration(seconds: 5));
+    if (saslResp.localName != 'success') {
+      await ch.sink.close();
+      throw StateError('SASL failed on resume: ${saslResp.toXmlString()}');
+    }
+
+    ch.sink.add(
+      '<open xmlns="urn:ietf:params:xml:ns:xmpp-framing" to="$domain" version="1.0"/>',
+    );
+    await incoming.stream
+        .firstWhere(
+          (e) => e.localName == 'features' || e.localName == 'stream:features',
+        )
+        .timeout(const Duration(seconds: 5));
+
+    ch.sink.add(
+      '<resume xmlns="$_smNs" previd="${_esc(previd)}" h="$resumedH"/>',
+    );
+    final resp = await incoming.stream
+        .firstWhere(
+          (e) =>
+              e.name.namespaceUri == _smNs &&
+              (e.localName == 'resumed' || e.localName == 'failed'),
+        )
+        .timeout(const Duration(seconds: 5));
+
+    if (resp.localName != 'resumed') {
+      // Server reaped the parked session (or claimed a different one).
+      // Give up SM state so a caller-driven connect() starts clean.
+      _smEnabled = false;
+      _smResumable = false;
+      _smid = '';
+      _outbound.clear();
+      _pendingAcks.clear();
+      throw StateError('resume failed: ${resp.toXmlString()}');
+    }
+
+    // Drop retransmit copies the server confirms it saw. Whatever
+    // remains in [_outbound] we resend now, preserving order.
+    final serverH = int.tryParse(resp.getAttribute('h') ?? '') ?? 0;
+    _outbound.removeWhere((k, _) => k <= serverH);
+    _pendingAcks.removeWhere((k, _) => k <= serverH);
+    final resend = _outbound.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    // Retransmit does NOT bump _hOut — those slots already counted.
+    for (final e in resend) {
+      _channel?.sink.add(e.value);
+    }
+
+    // Route future stanzas.
+    incoming.stream.listen(_routeStanza);
 
     _events.add(XmppConnected(_fullJid));
   }
@@ -353,6 +520,8 @@ class RainbowXmppClient {
         _events.add(XmppSentAck(stanzaId: id));
       }
     }
+    // Drop retransmit copies once the server confirms it saw them.
+    _outbound.removeWhere((k, _) => k <= h);
   }
 
   void _handleMessage(XmlElement el) {
@@ -739,6 +908,18 @@ class RainbowXmppClient {
     } catch (_) {}
     _channel = null;
     _fullJid = '';
+    // Graceful shutdown discards SM state; a subsequent [resume] would
+    // be pointless because the server-side parked session is now
+    // orphaned (still there until it times out but we no longer hold
+    // the previd). Callers who want to survive a drop should NOT call
+    // disconnect() — just let the WebSocket break.
+    _smEnabled = false;
+    _smResumable = false;
+    _smid = '';
+    _outbound.clear();
+    _pendingAcks.clear();
+    _hOut = 0;
+    _hIn = 0;
   }
 
   static String _esc(String s) => s

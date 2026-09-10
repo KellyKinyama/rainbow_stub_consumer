@@ -26,8 +26,7 @@ class PickedAttachment {
 }
 
 /// True on platforms where `image_picker` supports the camera source.
-bool get _cameraAvailable =>
-    kIsWeb || Platform.isAndroid || Platform.isIOS;
+bool get _cameraAvailable => kIsWeb || Platform.isAndroid || Platform.isIOS;
 
 Future<PickedAttachment?> showAttachmentPicker(BuildContext context) async {
   final choice = await showModalBottomSheet<String>(
@@ -65,7 +64,9 @@ Future<PickedAttachment?> showAttachmentPicker(BuildContext context) async {
       imageQuality: 85,
     );
     if (xf == null) return null;
-    final bytes = kIsWeb ? await xf.readAsBytes() : await File(xf.path).readAsBytes();
+    final bytes = kIsWeb
+        ? await xf.readAsBytes()
+        : await File(xf.path).readAsBytes();
     return PickedAttachment(
       bytes: bytes,
       fileName: xf.name,
