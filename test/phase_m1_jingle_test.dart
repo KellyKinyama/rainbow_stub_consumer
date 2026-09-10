@@ -84,9 +84,7 @@ void main() {
     });
 
     c.debugRouteStanza(
-      _parse(
-        '<iq type="result" id="ping-1" from="localhost"/>',
-      ),
+      _parse('<iq type="result" id="ping-1" from="localhost"/>'),
     );
 
     await Future<void>.delayed(Duration.zero);
