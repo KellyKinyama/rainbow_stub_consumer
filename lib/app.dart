@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
+import 'package:rearch/rearch.dart';
 
 import 'state/capsules/auth_state_capsule.dart';
+import 'state/capsules/call_manager_capsule.dart';
 import 'state/models/auth_state.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
@@ -31,6 +33,34 @@ class _AuthGate extends RearchConsumer {
   @override
   Widget build(BuildContext context, WidgetHandle use) {
     final auth = use(authCapsule);
-    return auth is SignedIn ? const HomePage() : const LoginPage();
+    return auth is SignedIn
+        ? const _CallLifecycleWatcher(child: HomePage())
+        : const LoginPage();
   }
+}
+
+/// Bridges Flutter's [AppLifecycleState] to [CallManager] so the
+/// ringer stops while the app is backgrounded.
+class _CallLifecycleWatcher extends RearchConsumer {
+  const _CallLifecycleWatcher({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetHandle use) {
+    final manager = use(callManagerCapsule);
+    use.effect(() {
+      final observer = _LifecycleObserver(manager.onAppLifecycleStateChanged);
+      WidgetsBinding.instance.addObserver(observer);
+      return () => WidgetsBinding.instance.removeObserver(observer);
+    }, [manager]);
+    return child;
+  }
+}
+
+class _LifecycleObserver with WidgetsBindingObserver {
+  _LifecycleObserver(this._onChange);
+  final void Function(AppLifecycleState) _onChange;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _onChange(state);
 }

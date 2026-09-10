@@ -56,8 +56,8 @@ class _CallCard extends StatelessWidget {
                 children: [
                   Text(
                     isIncoming
-                        ? 'Incoming call from ${call.peerId}'
-                        : 'Calling ${call.peerId}',
+                        ? 'Incoming call from ${call.displayLabel}'
+                        : 'Calling ${call.displayLabel}',
                     style: Theme.of(context).textTheme.titleSmall,
                   ),
                   Text(

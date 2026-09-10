@@ -443,4 +443,101 @@ void main() {
     restAlice.close();
     restBob.close();
   });
+
+  test(
+    'XEP-0166 Jingle: alice session-initiate reaches bob; bob session-accept '
+    'reaches alice',
+    () async {
+      if (!await _stubUp()) return;
+      final restAlice = RainbowRestClient(config);
+      final restBob = RainbowRestClient(config);
+      final aliceLogin = await restAlice.login(
+        'alice@rainbow-stub.local',
+        'password',
+      );
+      final bobLogin = await restBob.login(
+        'bob@rainbow-stub.local',
+        'password',
+      );
+
+      final alice = RainbowXmppClient(
+        wsUrl: config.wsUrl,
+        domain: config.xmppDomain,
+      );
+      final bob = RainbowXmppClient(
+        wsUrl: config.wsUrl,
+        domain: config.xmppDomain,
+      );
+      await alice.connect(
+        email: 'alice@rainbow-stub.local',
+        saslPassword: aliceLogin.token,
+        resource: 'flutter-jingle-a',
+      );
+      await bob.connect(
+        email: 'bob@rainbow-stub.local',
+        saslPassword: bobLogin.token,
+        resource: 'flutter-jingle-b',
+      );
+
+      final bobReceived = Completer<XmppJingle>();
+      final aliceReceived = Completer<XmppJingle>();
+      final subB = bob.events.listen((e) {
+        if (e is XmppJingle &&
+            e.action == 'session-initiate' &&
+            !bobReceived.isCompleted) {
+          bobReceived.complete(e);
+        }
+      });
+      final subA = alice.events.listen((e) {
+        if (e is XmppJingle &&
+            e.action == 'session-accept' &&
+            !aliceReceived.isCompleted) {
+          aliceReceived.complete(e);
+        }
+      });
+
+      // Alice → session-initiate → Bob.
+      alice.sendJingle(
+        toFullJid: '${bobLogin.loggedInUser.id}@${config.xmppDomain}',
+        action: 'session-initiate',
+        sid: 'live-sid-1',
+        contentXml:
+            '<content name="rtp" creator="initiator">'
+            '<rainbow-sdp xmlns="urn:rainbow:jingle:sdp:1">'
+            '<![CDATA[v=0]]></rainbow-sdp></content>',
+        initiator: alice.fullJid,
+      );
+
+      final initiate = await bobReceived.future.timeout(
+        const Duration(seconds: 5),
+      );
+      expect(initiate.sid, 'live-sid-1');
+      expect(initiate.action, 'session-initiate');
+
+      // Bob → session-accept → Alice.
+      bob.sendJingle(
+        toFullJid: '${aliceLogin.loggedInUser.id}@${config.xmppDomain}',
+        action: 'session-accept',
+        sid: 'live-sid-1',
+        contentXml:
+            '<content name="rtp" creator="initiator">'
+            '<rainbow-sdp xmlns="urn:rainbow:jingle:sdp:1">'
+            '<![CDATA[v=0-answer]]></rainbow-sdp></content>',
+        responder: bob.fullJid,
+      );
+
+      final accept = await aliceReceived.future.timeout(
+        const Duration(seconds: 5),
+      );
+      expect(accept.sid, 'live-sid-1');
+      expect(accept.action, 'session-accept');
+
+      await subA.cancel();
+      await subB.cancel();
+      await alice.disconnect();
+      await bob.disconnect();
+      restAlice.close();
+      restBob.close();
+    },
+  );
 }

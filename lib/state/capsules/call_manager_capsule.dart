@@ -1,15 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
+import '../../rainbow/ringer.dart';
 import '../../rainbow/sdp_to_jingle.dart';
 import '../../rainbow/webrtc_adapter.dart';
 import '../../rainbow/xmpp_client.dart';
 import 'auth_state_capsule.dart';
 import 'call_capsule.dart';
 import 'config_capsule.dart';
+import 'roster_capsule.dart';
 import 'xmpp_capsule.dart';
 
 /// Snapshot of one active call held by [CallManager].
@@ -20,6 +23,7 @@ class ActiveCall {
     required this.peerFullJid,
     required this.peerId,
     required this.session,
+    this.peerDisplayName,
     this.state = CallState.idle,
   });
   final String sid;
@@ -27,9 +31,19 @@ class ActiveCall {
   final String peerFullJid;
   final String peerId;
   final RtcSession session;
+  String? peerDisplayName;
   CallState state;
   String? pendingRemoteSdp;
+
+  /// Preferred label for the UI: display name if we've resolved one,
+  /// otherwise the JID's local-part.
+  String get displayLabel => peerDisplayName ?? peerId;
 }
+
+/// Resolves a peer's display name from an id (JID local-part).
+/// Injected by the capsule so [CallManager] doesn't need to know
+/// about the roster or user REST endpoints.
+typedef PeerNameResolver = String? Function(String peerId);
 
 /// App-wide call coordinator. Subscribes to `XmppJingle` events on the
 /// XMPP stream and routes them to the matching [RtcSession]; also
@@ -43,9 +57,13 @@ class CallManager extends ChangeNotifier {
     required WebRtcAdapter adapter,
     required RainbowXmppClient xmpp,
     required String Function() sidGen,
+    PeerNameResolver? resolvePeerName,
+    Ringer? ringer,
   }) : _adapter = adapter,
        _xmpp = xmpp,
-       _sidGen = sidGen {
+       _sidGen = sidGen,
+       _resolvePeerName = resolvePeerName,
+       _ringer = ringer ?? HapticRinger() {
     _sub = _xmpp.events
         .where((e) => e is XmppJingle)
         .cast<XmppJingle>()
@@ -53,6 +71,9 @@ class CallManager extends ChangeNotifier {
   }
 
   final WebRtcAdapter _adapter;
+  final PeerNameResolver? _resolvePeerName;
+  final Ringer _ringer;
+  bool _paused = false;
   final RainbowXmppClient _xmpp;
   final String Function() _sidGen;
   StreamSubscription<XmppJingle>? _sub;
@@ -79,6 +100,9 @@ class CallManager extends ChangeNotifier {
       direction: CallDirection.outgoing,
       peerFullJid: peerFullJid,
       peerId: peer.id,
+      peerDisplayName: peer.display.isNotEmpty
+          ? peer.display
+          : _resolvePeerName?.call(peer.id),
       session: session,
       state: session.state,
     );
@@ -135,6 +159,7 @@ class CallManager extends ChangeNotifier {
     final call = _calls.remove(sid);
     await _sessionSubs.remove(sid)?.cancel();
     await call?.session.close();
+    _updateRinger();
     notifyListeners();
   }
 
@@ -142,6 +167,7 @@ class CallManager extends ChangeNotifier {
     _sessionSubs[call.sid] = call.session.events.listen((e) {
       if (e is RtcStateChanged) {
         call.state = e.state;
+        _updateRinger();
         notifyListeners();
         if (e.state == CallState.ended) {
           unawaited(_dropCall(call.sid));
@@ -186,16 +212,19 @@ class CallManager extends ChangeNotifier {
       direction: CallDirection.incoming,
     );
     final peerBare = _bareOf(e.fromFullJid);
+    final peerId = _localPart(peerBare);
     final call = ActiveCall(
       sid: e.sid,
       direction: CallDirection.incoming,
       peerFullJid: e.fromFullJid,
-      peerId: _localPart(peerBare),
+      peerId: peerId,
+      peerDisplayName: _resolvePeerName?.call(peerId),
       session: session,
       state: session.state,
     )..pendingRemoteSdp = sdp;
     _calls[e.sid] = call;
     _wireSession(call);
+    _updateRinger();
     notifyListeners();
   }
 
@@ -219,8 +248,36 @@ class CallManager extends ChangeNotifier {
     );
   }
 
+  /// Called by the top-level lifecycle observer whenever the app
+  /// moves between resumed / paused / detached. M-4 uses it only to
+  /// silence the ringer when the app is backgrounded — the peer
+  /// connection itself is not disturbed (native flutter_webrtc handles
+  /// audio session juggling on iOS / Android).
+  void onAppLifecycleStateChanged(AppLifecycleState state) {
+    _paused = state != AppLifecycleState.resumed;
+    _updateRinger();
+  }
+
+  /// Starts the ringer iff we have an incoming call in the [ringing]
+  /// state AND the app is currently resumed. Stops it in every other
+  /// combination.
+  void _updateRinger() {
+    final shouldRing = !_paused &&
+        _calls.values.any(
+          (c) =>
+              c.direction == CallDirection.incoming &&
+              c.state == CallState.ringing,
+        );
+    if (shouldRing && !_ringer.isRinging) {
+      _ringer.start();
+    } else if (!shouldRing && _ringer.isRinging) {
+      _ringer.stop();
+    }
+  }
+
   @override
   Future<void> dispose() async {
+    _ringer.stop();
     await _sub?.cancel();
     for (final s in _sessionSubs.values) {
       await s.cancel();
@@ -237,16 +294,39 @@ class CallManager extends ChangeNotifier {
 CallManager callManagerCapsule(CapsuleHandle use) {
   final adapter = use(webRtcAdapterCapsule);
   final xmpp = use(xmppCapsule);
+  final ringer = use(ringerCapsule);
   // Reads are for lifecycle only — auth+config are supplied so the
   // manager can be torn down + rebuilt when the user changes.
   final me = use(authCapsule).me;
   use(configCapsule);
+  final roster = use(rosterCapsule);
+  final rosterEntries = switch (roster) {
+    AsyncData<List<RosterEntry>>(:final data) => data,
+    _ => const <RosterEntry>[],
+  };
+  String? resolvePeerName(String peerId) {
+    for (final r in rosterEntries) {
+      if (r.peer.id == peerId) return r.peer.display;
+    }
+    return null;
+  }
   return use.disposable<CallManager>(
-    () => CallManager(adapter: adapter, xmpp: xmpp, sidGen: _newSid),
+    () => CallManager(
+      adapter: adapter,
+      xmpp: xmpp,
+      sidGen: _newSid,
+      resolvePeerName: resolvePeerName,
+      ringer: ringer,
+    ),
     (m) => m.dispose(),
     [adapter, xmpp, me?.id],
   );
 }
+
+/// Ringer factory capsule — overridable by tests via
+/// `container.mock(ringerCapsule)`. The production default rings
+/// via haptic feedback; a test can inject a no-op or scripted fake.
+Ringer ringerCapsule(CapsuleHandle use) => HapticRinger();
 
 String _newSid() => 'sid-${DateTime.now().microsecondsSinceEpoch}';
 

@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rainbow_stub_consumer/config.dart';
 import 'package:rainbow_stub_consumer/rainbow/models.dart';
 import 'package:rainbow_stub_consumer/rainbow/rest_client.dart';
+import 'package:rainbow_stub_consumer/rainbow/ringer.dart';
 import 'package:rainbow_stub_consumer/rainbow/sdp_to_jingle.dart';
 import 'package:rainbow_stub_consumer/rainbow/webrtc_adapter.dart';
 import 'package:rainbow_stub_consumer/rainbow/xmpp_client.dart';
@@ -162,6 +163,29 @@ class _FakeAdapter implements WebRtcAdapter {
   }
 }
 
+class _SilentRinger implements Ringer {
+  int startCount = 0;
+  int stopCount = 0;
+  bool _on = false;
+
+  @override
+  bool get isRinging => _on;
+
+  @override
+  void start() {
+    if (_on) return;
+    _on = true;
+    startCount++;
+  }
+
+  @override
+  void stop() {
+    if (!_on) return;
+    _on = false;
+    stopCount++;
+  }
+}
+
 void main() {
   late _FakeRest fakeRest;
   late _FakeXmpp fakeXmpp;
@@ -176,6 +200,7 @@ void main() {
     container.mock(restCapsule).apply((use) => fakeRest);
     container.mock(xmppCapsule).apply((use) => fakeXmpp);
     container.mock(webRtcAdapterCapsule).apply((use) => fakeAdapter);
+    container.mock(ringerCapsule).apply((use) => _SilentRinger());
     final auth = container.read(authControllerCapsule);
     await auth.signIn('alice@rainbow-stub.local', 'pw');
   });
