@@ -127,20 +127,26 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
 - Windows release build succeeded in 56 s; app launched and rendered the login page (verified via process presence + no crash on stub-log timeline)
 - **Acceptance:** app still boots, login still works with old provider-based screens; `dart analyze` clean.
 
-### Phase B — Port state to capsules (M)
+### Phase B — Port state to capsules (M) — ✅ done 2026-09-10
 
 - **Do:**
   - New `lib/state/capsules/` directory:
     - `config_capsule.dart` — returns `AppConfig.dev`
-    - `rest_capsule.dart` — `use.effect` builds/closes `RainbowRestClient`
-    - `xmpp_capsule.dart` — same for `RainbowXmppClient`
-    - `auth_capsule.dart` — `use.state<AuthState>` (initial `AuthState.signedOut()`)
+    - `rest_capsule.dart` — `use.disposable` builds/closes `RainbowRestClient`
+    - `xmpp_capsule.dart` — same for `RainbowXmppClient`; also exposes `xmppEventsCapsule` for the broadcast stream
+    - `auth_state_capsule.dart` — `use.data<AuthState>` shared slot + `authCapsule` value getter
+    - `auth_controller_capsule.dart` — orchestrates REST `login` → set bearer → XMPP `connect` → slot flip; `signOut` reverse
     - `roster_capsule.dart` — depends on `restCapsule` + `authCapsule`; fetches on `signedIn`; returns `AsyncValue<List<RosterEntry>>`
     - `bubbles_capsule.dart` — same pattern
-    - `presence_capsule.dart` — listens to `xmppEventsCapsule`, maintains `Map<String, Presence>`
-    - `messages_capsule.dart` — family/parameterised: `messagesCapsule(threadKey)`; hydrates on demand; appends on XMPP events
-    - `xmpp_events_capsule.dart` — wraps `xmppClient.events` as a rearch `Stream`
-- **Acceptance:** all capsules compile; a new `test/capsules_test.dart` proves auth capsule transitions, roster capsule populates, messages capsule appends on stream input (using a fake `RainbowXmppClient`).
+    - `presence_capsule.dart` — `use.effect` listens to `xmppEventsCapsule`, maintains `Map<String, Presence>`
+    - `messages_capsule.dart` — family/parameterised: `messagesCapsule(threadKey)`; appends live XMPP messages that belong to the thread; hydration deferred to Phase D
+  - New `lib/state/models/` for `AuthState` + `Presence` value types
+- **Acceptance:** all capsules compile; `test/capsules_test.dart` proves auth capsule transitions, roster + bubbles capsules populate, presence + messages capsules react to injected stream events. Fake `RainbowRestClient` and `RainbowXmppClient` injected via `MockableContainer`.
+- **Evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on the new files (7 pre-existing infos in files not touched)
+  - `flutter test --exclude-tags=live` → 6 new capsule tests + 7 existing tests pass; live tests skip cleanly with stub down
+  - Commit: see `feat/chat-ui-rearch` branch tip
+  - Session log: `docs/phase-b-log.md`
 
 ### Phase C — Rewrite screens as `RearchConsumer` widgets, delete `RainbowSession` (M)
 

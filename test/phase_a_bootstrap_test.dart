@@ -7,12 +7,11 @@ import 'package:rainbow_stub_consumer/app.dart';
 import 'package:rainbow_stub_consumer/config.dart';
 
 void main() {
-  testWidgets('RearchBootstrapper wraps RainbowConsumerApp without crash',
-      (tester) async {
+  testWidgets('RearchBootstrapper wraps RainbowConsumerApp without crash', (
+    tester,
+  ) async {
     await tester.pumpWidget(
-      RearchBootstrapper(
-        child: RainbowConsumerApp(config: AppConfig.dev),
-      ),
+      RearchBootstrapper(child: RainbowConsumerApp(config: AppConfig.dev)),
     );
     await tester.pumpAndSettle(const Duration(milliseconds: 300));
 
