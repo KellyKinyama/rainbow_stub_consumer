@@ -64,6 +64,7 @@ class _FakeXmpp extends RainbowXmppClient {
     required String roomJid,
     required String body,
     String? id,
+    XmppAttachment? attachment,
   }) {
     groupSent.add((room: roomJid, body: body, id: id));
   }

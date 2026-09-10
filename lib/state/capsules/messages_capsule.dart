@@ -163,6 +163,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   to: e.to,
                   sentAt: DateTime.now(),
                   isMine: isMine,
+                  attachment: _fromXmpp(e.attachment),
                 ),
                 isGroupChat: e.isGroupChat,
               );
@@ -198,6 +199,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   to: e.to,
                   sentAt: e.sentAt,
                   isMine: myUserId != null && senderId == myUserId,
+                  attachment: _fromXmpp(e.attachment),
                 ),
                 isGroupChat: e.isGroupChat,
                 index: mamCursor.value,
@@ -314,16 +316,53 @@ void resetMessagesCapsuleCache() {
   _cacheGeneration++;
 }
 
-Message _toChatUiMessage(ChatMessage cm, String authorId) => Message.text(
-  id: cm.id,
-  authorId: authorId,
-  createdAt: cm.sentAt,
-  // `sentAt` is what makes Chat show at least the "sent" checkmark for
-  // my own messages; deliveredAt/seenAt are stamped later by
-  // receipt/marker events.
-  sentAt: cm.isMine ? cm.sentAt : null,
-  text: cm.body,
-);
+Message _toChatUiMessage(ChatMessage cm, String authorId) {
+  final a = cm.attachment;
+  if (a != null && a.isImage) {
+    return Message.image(
+      id: cm.id,
+      authorId: authorId,
+      createdAt: cm.sentAt,
+      sentAt: cm.isMine ? cm.sentAt : null,
+      source: a.downloadUrl,
+      text: cm.body,
+      size: a.size,
+    );
+  }
+  if (a != null) {
+    return Message.file(
+      id: cm.id,
+      authorId: authorId,
+      createdAt: cm.sentAt,
+      sentAt: cm.isMine ? cm.sentAt : null,
+      source: a.downloadUrl,
+      name: a.fileName,
+      mimeType: a.mimeType,
+      size: a.size,
+    );
+  }
+  return Message.text(
+    id: cm.id,
+    authorId: authorId,
+    createdAt: cm.sentAt,
+    // `sentAt` is what makes Chat show at least the "sent" checkmark for
+    // my own messages; deliveredAt/seenAt are stamped later by
+    // receipt/marker events.
+    sentAt: cm.isMine ? cm.sentAt : null,
+    text: cm.body,
+  );
+}
+
+FileDescriptor? _fromXmpp(XmppAttachment? a) {
+  if (a == null) return null;
+  return FileDescriptor(
+    id: a.id,
+    fileName: a.fileName,
+    mimeType: a.mimeType,
+    size: a.size,
+    downloadUrl: a.url,
+  );
+}
 
 /// Finds the message with [stanzaId] and calls `updateMessage` with an
 /// upgraded status timeline. No-op if the id isn't in the controller.
@@ -334,15 +373,30 @@ Future<void> _stampStatus(
   bool seen = false,
 }) async {
   final old = controller.messages
-      .whereType<TextMessage>()
       .where((m) => m.id == stanzaId)
       .firstOrNull;
   if (old == null) return;
   final now = DateTime.now();
-  final updated = old.copyWith(
-    deliveredAt: delivered || seen ? (old.deliveredAt ?? now) : old.deliveredAt,
-    seenAt: seen ? (old.seenAt ?? now) : old.seenAt,
-  );
+  final Message updated;
+  switch (old) {
+    case TextMessage m:
+      updated = m.copyWith(
+        deliveredAt: delivered || seen ? (m.deliveredAt ?? now) : m.deliveredAt,
+        seenAt: seen ? (m.seenAt ?? now) : m.seenAt,
+      );
+    case ImageMessage m:
+      updated = m.copyWith(
+        deliveredAt: delivered || seen ? (m.deliveredAt ?? now) : m.deliveredAt,
+        seenAt: seen ? (m.seenAt ?? now) : m.seenAt,
+      );
+    case FileMessage m:
+      updated = m.copyWith(
+        deliveredAt: delivered || seen ? (m.deliveredAt ?? now) : m.deliveredAt,
+        seenAt: seen ? (m.seenAt ?? now) : m.seenAt,
+      );
+    default:
+      return;
+  }
   if (identical(updated, old)) return;
   await controller.updateMessage(old, updated);
 }

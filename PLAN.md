@@ -215,12 +215,30 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - "Aggressive" auto-`<displayed>`: sent whenever we receive a 1:1 message while the capsule is alive, not gated on ChatPage visibility. Fine for demo, refine in Phase G+ if needed.
   - Typing scope is 1:1 only — group chat typing indicators are out of scope for this phase.
 
-### Phase G — Attachments UI (M)
+### Phase G — Attachments UI (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - `Chat(onAttachmentPressed: showPickerSheet)` — file picker sheet with camera / gallery / file.
-  - Uploads via the existing REST file endpoint on the stub; on success, send an XMPP message with a `<file>` payload; on receive, render as `ImageMessage` or `FileMessage`.
-- **Acceptance:** matches ROADMAP § 1.2 (file upload UI) end-to-end. Send a JPG → recipient sees an inline preview.
+- **Done:**
+  - `file_picker ^8.1.0` added to `pubspec.yaml` for cross-platform picking (Windows/macOS/Linux/Android/iOS/Web).
+  - `RainbowRestClient.uploadFile(bytes, fileName, mimeType, peerJid, peerType)` performs the stub's two-step handshake: `POST /files` (create descriptor) → `PUT /files/{id}/data` (upload bytes) → returns a `FileDescriptor` with the download URL.
+  - `RainbowRestClient.downloadFileBytes(url)` fetches bearer-authed bytes for the inline image preview.
+  - `RainbowXmppClient.sendChat` / `sendGroupChat` gained an optional `XmppAttachment attachment` — serialized as `<file xmlns="urn:rainbow:file:1" id="..." url="..." name="..." mime="..." size="..."/>` inside the outbound stanza. `XmppChatMessage` and `XmppMamMessage` now also carry an optional `attachment`. Parser scans children for `<file>` in that namespace.
+  - `chatActionsCapsule` gained `sendPeerFile` / `sendGroupFile` — upload → construct `XmppAttachment` → send XMPP with fallback body `"[File: name]"` → local-echo as a `ChatMessage` with `attachment: desc`.
+  - `_toChatUiMessage` now returns `Message.image(source: url, ...)` when the attachment's mime starts with `image/`, `Message.file(source, name, mimeType, size, ...)` for any other attachment, or `Message.text(...)` when there's no attachment.
+  - `_stampStatus` now pattern-matches over `TextMessage` / `ImageMessage` / `FileMessage` so delivery+read markers upgrade the status of all three types.
+  - New `lib/ui/attachment_picker.dart`:
+    - `showAttachmentPicker(context)` → modal sheet ("Image" / "File") → returns `PickedAttachment(bytes, fileName, mimeType)` or `null`.
+    - `AuthedImage(url)` — `RearchConsumer` that memoizes `rest.downloadFileBytes(url)` and renders via `Image.memory`. Used by `InlineImageBubble` in a custom `imageMessageBuilder` so inline previews load with the correct bearer.
+  - `ChatPage` wires `Chat.onAttachmentTap` → `showAttachmentPicker` → `actions.sendPeerFile(...)` and provides a custom `imageMessageBuilder` for authenticated inline previews.
+  - `BubbleChatPage` wires the same picker → `actions.sendGroupFile(...)` and the same custom image builder.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new files. Test-fake overrides for `sendChat` / `sendGroupChat` updated across Phase C/D/E/F tests to add the new `attachment` param.
+  - `flutter test --exclude-tags=live` → **36/36** pass (Phase G adds 3 tests in `phase_g_attachments_test.dart`: two-step upload+file-attached send, image mime → `ImageMessage`, incoming `<file>` → `ImageMessage`).
+  - `flutter build windows --debug` → clean build in ~17s.
+  - Session log: `docs/phase-g-log.md`.
+- **Deferred (documented in the log):**
+  - Camera capture — needs `image_picker` on top of `file_picker`; mobile-only concern for Phase H+.
+  - Progress indicators — upload is currently opaque; can wire via a progress-reporting HTTP transport later.
+  - MAM history for attachments across sessions — should just work because the stub archives the full stanza including the `<file>` child; not exercised in a test-drive scenario yet.
 
 ### Phase H — Message reactions + edits + replies (M)
 

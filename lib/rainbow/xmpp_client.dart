@@ -27,12 +27,14 @@ class XmppChatMessage extends XmppEvent {
     required this.body,
     required this.stanzaId,
     required this.isGroupChat,
+    this.attachment,
   });
   final String from;
   final String to;
   final String body;
   final String stanzaId;
   final bool isGroupChat;
+  final XmppAttachment? attachment;
 }
 
 class XmppMamMessage extends XmppEvent {
@@ -43,6 +45,7 @@ class XmppMamMessage extends XmppEvent {
     required this.stanzaId,
     required this.sentAt,
     required this.isGroupChat,
+    this.attachment,
   });
   final String from;
   final String to;
@@ -50,6 +53,24 @@ class XmppMamMessage extends XmppEvent {
   final String stanzaId;
   final DateTime sentAt;
   final bool isGroupChat;
+  final XmppAttachment? attachment;
+}
+
+/// File payload attached to an XMPP message via the `urn:rainbow:file:1`
+/// extension. Read from `<file .../>` inline in the stanza.
+class XmppAttachment {
+  const XmppAttachment({
+    required this.id,
+    required this.url,
+    required this.fileName,
+    required this.mimeType,
+    required this.size,
+  });
+  final String id;
+  final String url;
+  final String fileName;
+  final String mimeType;
+  final int size;
 }
 
 class XmppPresenceUpdate extends XmppEvent {
@@ -267,8 +288,24 @@ class RainbowXmppClient {
         body: body,
         stanzaId: id,
         isGroupChat: type == 'groupchat',
+        attachment: _readAttachment(el),
       ),
     );
+  }
+
+  static XmppAttachment? _readAttachment(XmlElement message) {
+    for (final child in message.childElements) {
+      if (child.localName == 'file' && _hasXmlns(child, 'urn:rainbow:file:1')) {
+        return XmppAttachment(
+          id: child.getAttribute('id') ?? '',
+          url: child.getAttribute('url') ?? '',
+          fileName: child.getAttribute('name') ?? 'file',
+          mimeType: child.getAttribute('mime') ?? 'application/octet-stream',
+          size: int.tryParse(child.getAttribute('size') ?? '') ?? 0,
+        );
+      }
+    }
+    return null;
   }
 
   static bool _hasXmlns(XmlElement el, String ns) =>
@@ -301,6 +338,7 @@ class RainbowXmppClient {
       stanzaId: inner.getAttribute('id') ?? '',
       sentAt: sentAt,
       isGroupChat: inner.getAttribute('type') == 'groupchat',
+      attachment: _readAttachment(inner),
     );
     _events.add(ev);
   }
@@ -318,12 +356,18 @@ class RainbowXmppClient {
     _events.add(XmppPresenceUpdate(fromBare: bare, show: show, status: status));
   }
 
-  void sendChat({required String toBareJid, required String body, String? id}) {
+  void sendChat({
+    required String toBareJid,
+    required String body,
+    String? id,
+    XmppAttachment? attachment,
+  }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
     _channel?.sink.add(
       '<message id="$stanzaId" to="$toBareJid" type="chat">'
       '<body>${_esc(body)}</body>'
+      '${_renderFile(attachment)}'
       '<request xmlns="urn:xmpp:receipts"/>'
       '<markable xmlns="urn:xmpp:chat-markers:0"/>'
       '</message>',
@@ -334,13 +378,26 @@ class RainbowXmppClient {
     required String roomJid,
     required String body,
     String? id,
+    XmppAttachment? attachment,
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
     _channel?.sink.add(
       '<message id="$stanzaId" to="$roomJid" type="groupchat">'
-      '<body>${_esc(body)}</body></message>',
+      '<body>${_esc(body)}</body>'
+      '${_renderFile(attachment)}'
+      '</message>',
     );
+  }
+
+  static String _renderFile(XmppAttachment? f) {
+    if (f == null) return '';
+    return '<file xmlns="urn:rainbow:file:1" '
+        'id="${_esc(f.id)}" '
+        'url="${_esc(f.url)}" '
+        'name="${_esc(f.fileName)}" '
+        'mime="${_esc(f.mimeType)}" '
+        'size="${f.size}"/>';
   }
 
   void joinMuc(String roomJid, String nick) {

@@ -10,6 +10,7 @@ import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
+import 'attachment_picker.dart';
 
 class BubbleChatPage extends RearchConsumer {
   const BubbleChatPage({super.key, required this.bubble});
@@ -65,6 +66,21 @@ class BubbleChatPage extends RearchConsumer {
         currentUserId: currentUserId,
         resolveUser: resolveUser,
         chatController: controller,
+        builders: Builders(
+          imageMessageBuilder:
+              (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                  InlineImageBubble(message: msg, isSentByMe: isSentByMe),
+        ),
+        onAttachmentTap: () async {
+          final picked = await showAttachmentPicker(context);
+          if (picked == null) return;
+          await actions.sendGroupFile(
+            bubble,
+            bytes: picked.bytes,
+            fileName: picked.fileName,
+            mimeType: picked.mimeType,
+          );
+        },
         onMessageSend: (text) {
           final trimmed = text.trim();
           if (trimmed.isEmpty) return;

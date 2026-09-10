@@ -148,6 +148,49 @@ class RainbowRestClient {
     _check(r);
   }
 
+  /// Two-step upload — creates a descriptor, then PUTs the bytes. Returns
+  /// the descriptor with the `downloadUrl` filled in.
+  Future<FileDescriptor> uploadFile({
+    required List<int> bytes,
+    required String fileName,
+    required String mimeType,
+    required String peerJid,
+    String peerType = 'user',
+  }) async {
+    final create = await _http.post(
+      _u('/api/rainbow/fileServer/v1.0/files'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({
+        'peer': peerJid,
+        'peerType': peerType,
+        'fileName': fileName,
+        'mime': mimeType,
+        'size': bytes.length,
+      }),
+    );
+    _check(create);
+    final createBody = jsonDecode(create.body) as Map<String, dynamic>;
+    final id = (createBody['data'] as Map<String, dynamic>)['id'] as String;
+
+    final put = await _http.put(
+      _u('/api/rainbow/fileServer/v1.0/files/$id/data'),
+      headers: _authed(contentType: mimeType),
+      body: bytes,
+    );
+    _check(put);
+    final putBody = jsonDecode(put.body) as Map<String, dynamic>;
+    return FileDescriptor.fromJson(
+      (putBody['data'] as Map).cast<String, dynamic>(),
+    );
+  }
+
+  /// Fetches a file's bytes with the current bearer.
+  Future<List<int>> downloadFileBytes(String downloadUrl) async {
+    final r = await _http.get(Uri.parse(downloadUrl), headers: _authed());
+    _check(r);
+    return r.bodyBytes;
+  }
+
   void close() => _http.close();
 
   void _check(http.Response r) {

@@ -103,6 +103,7 @@ class ChatMessage {
     required this.to,
     required this.sentAt,
     this.isMine = false,
+    this.attachment,
   });
 
   final String id;
@@ -111,4 +112,32 @@ class ChatMessage {
   final String to;
   final DateTime sentAt;
   final bool isMine;
+  final FileDescriptor? attachment;
+}
+
+/// Metadata for an attached file returned by the stub's file endpoint.
+class FileDescriptor {
+  const FileDescriptor({
+    required this.id,
+    required this.fileName,
+    required this.mimeType,
+    required this.size,
+    required this.downloadUrl,
+  });
+
+  final String id;
+  final String fileName;
+  final String mimeType;
+  final int size;
+  final String downloadUrl;
+
+  bool get isImage => mimeType.startsWith('image/');
+
+  factory FileDescriptor.fromJson(Map<String, dynamic> j) => FileDescriptor(
+    id: j['id'] as String,
+    fileName: (j['fileName'] ?? 'file') as String,
+    mimeType: (j['mime'] ?? 'application/octet-stream') as String,
+    size: (j['size'] as int?) ?? 0,
+    downloadUrl: (j['downloadUrl'] ?? '') as String,
+  );
 }

@@ -1,6 +1,7 @@
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
+import '../../rainbow/xmpp_client.dart';
 import 'auth_state_capsule.dart';
 import 'config_capsule.dart';
 import 'messages_capsule.dart';
@@ -16,6 +17,8 @@ class ChatActions {
     required this.setMyPresence,
     required this.createBubble,
     required this.sendChatState,
+    required this.sendPeerFile,
+    required this.sendGroupFile,
   });
 
   final void Function(RainbowUser peer, String body) sendPeer;
@@ -25,6 +28,20 @@ class ChatActions {
   final Future<RainbowBubble> Function(String name, {String? topic})
   createBubble;
   final void Function(RainbowUser peer, String state) sendChatState;
+  final Future<void> Function(
+    RainbowUser peer, {
+    required List<int> bytes,
+    required String fileName,
+    required String mimeType,
+  })
+  sendPeerFile;
+  final Future<void> Function(
+    RainbowBubble bubble, {
+    required List<int> bytes,
+    required String fileName,
+    required String mimeType,
+  })
+  sendGroupFile;
 }
 
 ChatActions chatActionsCapsule(CapsuleHandle use) {
@@ -89,6 +106,92 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     xmpp.sendChatState(toBareJid: peerThreadKey(peer), state: state);
   }
 
+  Future<void> sendPeerFile(
+    RainbowUser peer, {
+    required List<int> bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final key = peerThreadKey(peer);
+    final desc = await rest.uploadFile(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
+      peerJid: key,
+      peerType: 'user',
+    );
+    final stanzaId = _newStanzaId();
+    final attachment = XmppAttachment(
+      id: desc.id,
+      url: desc.downloadUrl,
+      fileName: desc.fileName,
+      mimeType: desc.mimeType,
+      size: desc.size,
+    );
+    final body = '[File: ${desc.fileName}]';
+    xmpp.sendChat(
+      toBareJid: key,
+      body: body,
+      id: stanzaId,
+      attachment: attachment,
+    );
+    appendLocalMessage(
+      key,
+      ChatMessage(
+        id: stanzaId,
+        body: body,
+        from: xmpp.fullJid,
+        to: key,
+        sentAt: DateTime.now(),
+        isMine: true,
+        attachment: desc,
+      ),
+    );
+  }
+
+  Future<void> sendGroupFile(
+    RainbowBubble bubble, {
+    required List<int> bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final key = bubbleThreadKey(bubble);
+    final desc = await rest.uploadFile(
+      bytes: bytes,
+      fileName: fileName,
+      mimeType: mimeType,
+      peerJid: key,
+      peerType: 'room',
+    );
+    final stanzaId = _newStanzaId();
+    final attachment = XmppAttachment(
+      id: desc.id,
+      url: desc.downloadUrl,
+      fileName: desc.fileName,
+      mimeType: desc.mimeType,
+      size: desc.size,
+    );
+    final body = '[File: ${desc.fileName}]';
+    xmpp.sendGroupChat(
+      roomJid: key,
+      body: body,
+      id: stanzaId,
+      attachment: attachment,
+    );
+    appendLocalMessage(
+      key,
+      ChatMessage(
+        id: stanzaId,
+        body: body,
+        from: xmpp.fullJid,
+        to: key,
+        sentAt: DateTime.now(),
+        isMine: true,
+        attachment: desc,
+      ),
+    );
+  }
+
   return ChatActions(
     sendPeer: sendPeer,
     sendGroup: sendGroup,
@@ -96,6 +199,8 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     setMyPresence: setMyPresence,
     createBubble: createBubble,
     sendChatState: sendChatState,
+    sendPeerFile: sendPeerFile,
+    sendGroupFile: sendGroupFile,
   );
 }
 
