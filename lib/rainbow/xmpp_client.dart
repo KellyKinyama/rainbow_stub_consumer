@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:meta/meta.dart';
-import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xml/xml.dart';
+
+import '_xmpp_socket.dart';
 
 class XmppEvent {
   const XmppEvent();
@@ -305,16 +305,10 @@ class RainbowXmppClient {
     required String saslPassword,
     String resource = 'flutter',
   }) async {
-    HttpClient? io;
-    if (acceptSelfSignedCerts) {
-      io = HttpClient()..badCertificateCallback = (_, __, ___) => true;
-    }
-    final ch = IOWebSocketChannel.connect(
+    final ch = await openXmppSocket(
       wsUrl,
-      protocols: const ['xmpp'],
-      customClient: io,
+      acceptSelfSignedCerts: acceptSelfSignedCerts,
     );
-    await ch.ready;
     _channel = ch;
 
     final incoming = StreamController<XmlElement>.broadcast();
@@ -441,16 +435,10 @@ class RainbowXmppClient {
     final previd = _smid;
     final resumedH = _hIn;
 
-    HttpClient? io;
-    if (acceptSelfSignedCerts) {
-      io = HttpClient()..badCertificateCallback = (_, _, _) => true;
-    }
-    final ch = IOWebSocketChannel.connect(
+    final ch = await openXmppSocket(
       wsUrl,
-      protocols: const ['xmpp'],
-      customClient: io,
+      acceptSelfSignedCerts: acceptSelfSignedCerts,
     );
-    await ch.ready;
     _channel = ch;
 
     final incoming = StreamController<XmlElement>.broadcast();

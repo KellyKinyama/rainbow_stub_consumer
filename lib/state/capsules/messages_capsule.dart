@@ -310,7 +310,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         final receiptSub = events
             .where((e) => e is XmppDeliveryReceipt)
             .cast<XmppDeliveryReceipt>()
-            .where((e) => e.fromBare == threadKey)
+            .where((e) => _matchesThread(e.fromBare, threadKey))
             .listen((e) async {
               if (myGeneration != _cacheGeneration) return;
               await _stampStatus(
@@ -324,7 +324,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         final markerSub = events
             .where((e) => e is XmppReadMarker)
             .cast<XmppReadMarker>()
-            .where((e) => e.fromBare == threadKey)
+            .where((e) => _matchesThread(e.fromBare, threadKey))
             .listen((e) async {
               if (myGeneration != _cacheGeneration) return;
               await _stampStatus(controller, stanzaId: e.stanzaId, seen: true);
@@ -335,7 +335,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         final reactionsSub = events
             .where((e) => e is XmppReactions)
             .cast<XmppReactions>()
-            .where((e) => e.fromBare == threadKey)
+            .where((e) => _matchesThread(e.fromBare, threadKey))
             .listen((e) async {
               if (myGeneration != _cacheGeneration) return;
               await _applyReactions(
@@ -351,7 +351,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         final correctionSub = events
             .where((e) => e is XmppMessageCorrection)
             .cast<XmppMessageCorrection>()
-            .where((e) => e.fromBare == threadKey)
+            .where((e) => _matchesThread(e.fromBare, threadKey))
             .listen((e) async {
               if (myGeneration != _cacheGeneration) return;
               await _applyEdit(
@@ -376,7 +376,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               final belongs = e.isGroupChat
                   ? e.fromBare.contains('@muc.') &&
                         _bareJid(e.fromBare) == threadKey
-                  : (e.fromBare == threadKey || fromMatchesMe);
+                  : (_matchesThread(e.fromBare, threadKey) || fromMatchesMe);
               if (!belongs) return;
               await _applyRetract(controller, e.targetStanzaId);
             });
@@ -459,7 +459,7 @@ Capsule<bool> typingCapsule(ThreadKey threadKey) {
         final sub = events
             .where((e) => e is XmppChatState)
             .cast<XmppChatState>()
-            .where((e) => e.fromBare == threadKey)
+            .where((e) => _matchesThread(e.fromBare, threadKey))
             .listen((e) {
               if (myGeneration != _cacheGeneration) return;
               clearTimer?.cancel();
@@ -828,11 +828,31 @@ void _unregisterAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
 }
 
 bool _belongsToThread(XmppChatMessage e, ThreadKey threadKey) {
-  return _bareJid(e.from) == threadKey || _bareJid(e.to) == threadKey;
+  // Thread keys are `<userId>@<localDomain>` but the server stamps its
+  // OWN domain on incoming `from=`, and clients on different builds
+  // may hold different `xmppDomain` values (e.g. an Android emulator
+  // using `10.0.2.2` vs. web using `localhost`). Compare on local-part
+  // (== user id) for 1:1 and on the full bare JID for MUC rooms.
+  if (e.isGroupChat || threadKey.contains('@muc.')) {
+    return _bareJid(e.from) == threadKey || _bareJid(e.to) == threadKey;
+  }
+  final threadLocal = _localPart(threadKey);
+  return _localPart(e.from) == threadLocal || _localPart(e.to) == threadLocal;
 }
 
 bool _belongsToMamThread(XmppMamMessage e, ThreadKey threadKey) {
-  return _bareJid(e.from) == threadKey || _bareJid(e.to) == threadKey;
+  if (e.isGroupChat || threadKey.contains('@muc.')) {
+    return _bareJid(e.from) == threadKey || _bareJid(e.to) == threadKey;
+  }
+  final threadLocal = _localPart(threadKey);
+  return _localPart(e.from) == threadLocal || _localPart(e.to) == threadLocal;
+}
+
+/// Domain-tolerant equivalent of `fromBare == threadKey`. See
+/// [_belongsToThread] for rationale.
+bool _matchesThread(String fromBare, ThreadKey threadKey) {
+  if (threadKey.contains('@muc.')) return fromBare == threadKey;
+  return _localPart(fromBare) == _localPart(threadKey);
 }
 
 String _bareJid(String jid) =>
