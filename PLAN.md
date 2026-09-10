@@ -107,13 +107,24 @@ Attachments (Phase 5 in this plan) map to `ImageMessage` / `FileMessage`.
 
 Each phase is independently commit-able, ships to `feat/chat-ui-rearch`, and has explicit acceptance.
 
-### Phase A — Add deps, introduce rearch bootstrap (S)
+### Phase A — Add deps, introduce rearch bootstrap (S) — ✅ done 2026-09-10
 
 - **Do:**
   - `flutter pub add rearch flutter_rearch flutter_chat_ui flutter_chat_core`
-  - `flutter pub remove provider`
+  - ~~`flutter pub remove provider`~~ — deferred to Phase C; removing it now
+    would break the existing `ChangeNotifierProvider<RainbowSession>` before
+    the UI has been migrated. `provider` stays until Phase C.
   - Wrap `main()` in `RearchBootstrapper`.
   - Keep `RainbowSession` for now; delete only after Phase C.
+
+**Resolved:** actual `rearch` version is `^1.16.1` (not `^5.x` as the plan
+guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
+
+**Evidence:**
+- `flutter analyze` — 0 errors / 0 warnings (7 pre-existing style infos, none Phase-A related)
+- `flutter test` — 7/7 pass (added `phase_a_bootstrap_test.dart` proving the Rearch bootstrap composes without a crash and the login page still renders)
+- `flutter test test/live_stub_integration_test.dart` — 3/3 pass, no wire regression
+- Windows release build succeeded in 56 s; app launched and rendered the login page (verified via process presence + no crash on stub-log timeline)
 - **Acceptance:** app still boots, login still works with old provider-based screens; `dart analyze` clean.
 
 ### Phase B — Port state to capsules (M)
