@@ -9,6 +9,7 @@ class AppConfig {
     this.iceServers = const [
       {'urls': 'stun:stun.l.google.com:19302'},
     ],
+    this.sfuUrl,
   });
 
   final Uri baseUrl;
@@ -20,6 +21,16 @@ class AppConfig {
   /// Default: Google's public STUN. TURN can be added by callers when
   /// available (see docs/webrtc-roadmap.md M-7).
   final List<Map<String, dynamic>> iceServers;
+
+  /// Optional ion-sfu (or compatible) JSON-RPC 2.0 WebSocket endpoint
+  /// used for group / MUC calls. When null, group calling is disabled
+  /// in the UI. Typical dev value: `ws://localhost:7000/ws`.
+  final Uri? sfuUrl;
+
+  /// True when the app has been configured with an SFU endpoint —
+  /// group-call UI checks this before showing "Start / Join call"
+  /// controls on bubbles.
+  bool get groupCallsEnabled => sfuUrl != null;
 
   /// Default dev config — targets a local rainbow-stub on :8443.
   /// On the Android emulator swap `localhost` for `10.0.2.2`.

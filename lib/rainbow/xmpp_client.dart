@@ -198,6 +198,22 @@ class XmppJingle extends XmppEvent {
   final String jingleXml;
 }
 
+/// MUC-scoped group-call marker (`<call xmlns="urn:rainbow:muc-call:1"
+/// state="started|ended" sid="…"/>`) broadcast in a bubble by the
+/// initiator so late-joining members see a "Join call" chip.
+class XmppMucCallMarker extends XmppEvent {
+  const XmppMucCallMarker({
+    required this.roomBareJid,
+    required this.fromResource,
+    required this.state,
+    required this.sid,
+  });
+  final String roomBareJid;
+  final String fromResource;
+  final String state;
+  final String sid;
+}
+
 class RainbowXmppClient {
   RainbowXmppClient({
     required this.wsUrl,
@@ -681,6 +697,23 @@ class RainbowXmppClient {
       return;
     }
 
+    // MUC group-call marker (`<call xmlns="urn:rainbow:muc-call:1"
+    // state="started|ended" sid="…"/>`). Broadcast to bubble members
+    // whenever anyone starts or ends a group call in the room.
+    final callEl = el.getElement('call');
+    if (callEl != null && _hasXmlns(callEl, 'urn:rainbow:muc-call:1')) {
+      final slashIdx = from.indexOf('/');
+      _events.add(
+        XmppMucCallMarker(
+          roomBareJid: slashIdx == -1 ? from : from.substring(0, slashIdx),
+          fromResource: slashIdx == -1 ? '' : from.substring(slashIdx + 1),
+          state: callEl.getAttribute('state') ?? '',
+          sid: callEl.getAttribute('sid') ?? '',
+        ),
+      );
+      return;
+    }
+
     // Server-issued sent-ack for one of my messages.
     // Historically emitted as `<sent xmlns="urn:xmpp:sent-ack:1"/>`;
     // now derived from XEP-0198 `<a h="N"/>` in `_handleSmAck`. The
@@ -922,6 +955,23 @@ class RainbowXmppClient {
       ' type="${isGroupChat ? 'groupchat' : 'chat'}">'
       '<retract xmlns="urn:xmpp:message-retract:1"'
       ' id="${_esc(targetStanzaId)}"/>'
+      '</message>',
+    );
+  }
+
+  /// Announces a group-call state change in a MUC room. The message
+  /// travels as a body-less MUC broadcast so every accepted member
+  /// receives the marker via the router's normal fan-out.
+  void sendMucCallMarker({
+    required String roomBareJid,
+    required String state,
+    required String sid,
+  }) {
+    _send(
+      '<message to="${_esc(roomBareJid)}" type="groupchat">'
+      '<call xmlns="urn:rainbow:muc-call:1"'
+      ' state="${_esc(state)}"'
+      ' sid="${_esc(sid)}"/>'
       '</message>',
     );
   }

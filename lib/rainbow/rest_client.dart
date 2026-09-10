@@ -195,7 +195,7 @@ class RainbowRestClient {
       headers: _authed(contentType: 'application/json'),
       body: jsonEncode({
         'peerJid': peerJid,
-        ?'peerDisplay': peerDisplay,
+        if (peerDisplay != null) 'peerDisplay': peerDisplay,
         'direction': direction,
         'state': state,
         'media': media,

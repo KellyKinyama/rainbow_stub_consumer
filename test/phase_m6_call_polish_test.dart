@@ -79,7 +79,10 @@ class _FakeSession implements RtcSession {
       'v=0\r\nanswer\r\n';
 
   @override
-  Future<void> setRemoteDescription(String sdp, {required bool isOffer}) async {}
+  Future<void> setRemoteDescription(
+    String sdp, {
+    required bool isOffer,
+  }) async {}
 
   @override
   Future<void> addRemoteIceCandidate({
@@ -199,7 +202,8 @@ void main() {
           iqId: 'iq-term',
           sid: 'm1',
           action: 'session-terminate',
-          jingleXml: '<jingle xmlns="urn:xmpp:jingle:1" '
+          jingleXml:
+              '<jingle xmlns="urn:xmpp:jingle:1" '
               'action="session-terminate" sid="m1"/>',
         ),
       );
@@ -213,115 +217,102 @@ void main() {
     },
   );
 
-  test(
-    'CallState.disconnected auto-hangs up after the grace window',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final logs = <CallLogPayload>[];
-      final manager = CallManager(
-        adapter: adapter,
-        xmpp: xmpp,
-        sidGen: _sidGen,
-        ringer: _SilentRinger(),
-        writeCallLog: (p) async => logs.add(p),
-        disconnectedGrace: const Duration(milliseconds: 50),
-      );
+  test('CallState.disconnected auto-hangs up after the grace window', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final logs = <CallLogPayload>[];
+    final manager = CallManager(
+      adapter: adapter,
+      xmpp: xmpp,
+      sidGen: _sidGen,
+      ringer: _SilentRinger(),
+      writeCallLog: (p) async => logs.add(p),
+      disconnectedGrace: const Duration(milliseconds: 50),
+    );
 
-      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
-      final sid = await manager.startCall(
-        peer: peer,
-        peerFullJid: 'bob@localhost/laptop',
-      );
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+    );
 
-      adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      adapter.sessions.single.push(
-        const RtcStateChanged(CallState.disconnected),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+    adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    adapter.sessions.single.push(const RtcStateChanged(CallState.disconnected));
+    await Future<void>.delayed(const Duration(milliseconds: 100));
 
-      // Auto-hangup fired: session-terminate sent, ActiveCall cleared,
-      // call log recorded.
-      expect(
-        xmpp.sentJingles.any((s) => s.action == 'session-terminate'),
-        isTrue,
-      );
-      expect(manager.calls, isEmpty);
-      expect(logs, hasLength(1));
-      expect(logs.single.state, 'answered');
-      expect(logs.single.direction, 'outgoing');
-      await manager.dispose();
-      expect(sid, isNotNull);
-    },
-  );
+    // Auto-hangup fired: session-terminate sent, ActiveCall cleared,
+    // call log recorded.
+    expect(
+      xmpp.sentJingles.any((s) => s.action == 'session-terminate'),
+      isTrue,
+    );
+    expect(manager.calls, isEmpty);
+    expect(logs, hasLength(1));
+    expect(logs.single.state, 'answered');
+    expect(logs.single.direction, 'outgoing');
+    await manager.dispose();
+    expect(sid, isNotNull);
+  });
 
-  test(
-    'recovery from disconnected within grace cancels auto-hangup',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final logs = <CallLogPayload>[];
-      final manager = CallManager(
-        adapter: adapter,
-        xmpp: xmpp,
-        sidGen: _sidGen,
-        ringer: _SilentRinger(),
-        writeCallLog: (p) async => logs.add(p),
-        disconnectedGrace: const Duration(milliseconds: 100),
-      );
+  test('recovery from disconnected within grace cancels auto-hangup', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final logs = <CallLogPayload>[];
+    final manager = CallManager(
+      adapter: adapter,
+      xmpp: xmpp,
+      sidGen: _sidGen,
+      ringer: _SilentRinger(),
+      writeCallLog: (p) async => logs.add(p),
+      disconnectedGrace: const Duration(milliseconds: 100),
+    );
 
-      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
-      final sid = await manager.startCall(
-        peer: peer,
-        peerFullJid: 'bob@localhost/laptop',
-      );
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+    );
 
-      adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      adapter.sessions.single.push(
-        const RtcStateChanged(CallState.disconnected),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
-      // Wait past the original grace window; auto-hangup should be off.
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+    adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    adapter.sessions.single.push(const RtcStateChanged(CallState.disconnected));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
+    // Wait past the original grace window; auto-hangup should be off.
+    await Future<void>.delayed(const Duration(milliseconds: 150));
 
-      expect(manager.calls.containsKey(sid), isTrue);
-      expect(
-        xmpp.sentJingles.any((s) => s.action == 'session-terminate'),
-        isFalse,
-      );
-      expect(logs, isEmpty);
-      await manager.hangUp(sid);
-      await manager.dispose();
-    },
-  );
+    expect(manager.calls.containsKey(sid), isTrue);
+    expect(
+      xmpp.sentJingles.any((s) => s.action == 'session-terminate'),
+      isFalse,
+    );
+    expect(logs, isEmpty);
+    await manager.hangUp(sid);
+    await manager.dispose();
+  });
 
-  test(
-    'video call writes media=video',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final logs = <CallLogPayload>[];
-      final manager = CallManager(
-        adapter: adapter,
-        xmpp: xmpp,
-        sidGen: _sidGen,
-        ringer: _SilentRinger(),
-        writeCallLog: (p) async => logs.add(p),
-      );
+  test('video call writes media=video', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final logs = <CallLogPayload>[];
+    final manager = CallManager(
+      adapter: adapter,
+      xmpp: xmpp,
+      sidGen: _sidGen,
+      ringer: _SilentRinger(),
+      writeCallLog: (p) async => logs.add(p),
+    );
 
-      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
-      final sid = await manager.startCall(
-        peer: peer,
-        peerFullJid: 'bob@localhost/laptop',
-        video: true,
-      );
-      await manager.hangUp(sid);
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+      video: true,
+    );
+    await manager.hangUp(sid);
 
-      expect(logs.single.media, 'video');
-      await manager.dispose();
-    },
-  );
+    expect(logs.single.media, 'video');
+    await manager.dispose();
+  });
 }
