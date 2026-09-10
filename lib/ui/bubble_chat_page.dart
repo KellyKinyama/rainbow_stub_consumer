@@ -170,13 +170,22 @@ class BubbleChatPage extends RearchConsumer {
             },
           ),
           Expanded(
-            child: Chat(
-              currentUserId: currentUserId,
-              resolveUser: resolveUser,
-              chatController: controller,
-              builders: Builders(
-                composerBuilder: (ctx) =>
-                    Composer(textEditingController: input),
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (n) {
+                final m = n.metrics;
+                if (m.axis == Axis.vertical &&
+                    m.pixels >= m.maxScrollExtent - 200) {
+                  actions.loadOlder(threadKey);
+                }
+                return false;
+              },
+              child: Chat(
+                currentUserId: currentUserId,
+                resolveUser: resolveUser,
+                chatController: controller,
+                builders: Builders(
+                  composerBuilder: (ctx) =>
+                      Composer(textEditingController: input),
                 textMessageBuilder:
                     (ctx, msg, index, {required isSentByMe, groupStatus}) =>
                         wrapChatBubble(
@@ -232,6 +241,7 @@ class BubbleChatPage extends RearchConsumer {
                 }
                 clearBanner();
               },
+              ),
             ),
           ),
           if (banner != null) banner,
