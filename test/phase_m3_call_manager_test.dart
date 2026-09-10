@@ -325,6 +325,10 @@ void main() {
       peerFullJid: 'bob@localhost/laptop',
     );
 
+    // Trickle-ICE candidates that arrive before the remote description
+    // is set must be buffered (the browser throws InvalidStateError
+    // otherwise). Push the candidate first, then session-accept, and
+    // expect the candidate to land on the adapter after the drain.
     fakeXmpp.pushIncoming(
       XmppJingle(
         fromFullJid: 'bob@localhost/laptop',
@@ -337,6 +341,29 @@ void main() {
             '<rainbow-candidate xmlns="urn:rainbow:jingle:sdp:1" '
             'line="candidate:9 1 udp 2 172.16.0.5 44444 typ srflx" '
             'sdp-mid="audio" sdp-m-line-index="0"/>'
+            '</content>'
+            '</jingle>',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(
+      fakeAdapter.sessions.single.remoteCandidates,
+      isEmpty,
+      reason: 'candidate must be buffered until remote description is set',
+    );
+
+    fakeXmpp.pushIncoming(
+      XmppJingle(
+        fromFullJid: 'bob@localhost/laptop',
+        iqId: 'iq-bob-3',
+        sid: sid,
+        action: 'session-accept',
+        jingleXml:
+            '<jingle xmlns="urn:xmpp:jingle:1" action="session-accept" sid="$sid">'
+            '<content name="rtp" creator="initiator">'
+            '<rainbow-sdp xmlns="urn:rainbow:jingle:sdp:1">'
+            '<![CDATA[v=0\r\no=peer-answer\r\n]]>'
+            '</rainbow-sdp>'
             '</content>'
             '</jingle>',
       ),

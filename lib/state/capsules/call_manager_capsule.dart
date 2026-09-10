@@ -38,6 +38,18 @@ class ActiveCall {
   CallState state;
   String? pendingRemoteSdp;
 
+  /// True once `setRemoteDescription` has been applied on the local
+  /// peer connection. Used to gate trickle-ICE application so
+  /// candidates that arrive before the peer's SDP don't blow up with
+  /// `InvalidStateError: The remote description was null`.
+  bool remoteDescriptionSet = false;
+
+  /// Trickle-ICE candidates that arrived before [remoteDescriptionSet]
+  /// flipped true. Drained by [CallManager.answer] (incoming) or
+  /// `_handleIncomingAccept` (outgoing) after `setRemoteDescription`.
+  final List<({String candidate, String? sdpMid, int? sdpMLineIndex})>
+  pendingCandidates = [];
+
   /// Timestamp of the first `CallState.connected` transition, if
   /// any. Used to compute the call-log duration and to distinguish
   /// answered vs missed/declined calls.
@@ -147,6 +159,8 @@ class CallManager extends ChangeNotifier {
     final offer = call.pendingRemoteSdp;
     if (offer == null) return;
     await call.session.setRemoteDescription(offer, isOffer: true);
+    call.remoteDescriptionSet = true;
+    await _drainPendingCandidates(call);
     final answer = await call.session.createAnswer(video: call.hasVideo);
     _xmpp.sendJingle(
       toFullJid: call.peerFullJid,
@@ -303,6 +317,8 @@ class CallManager extends ChangeNotifier {
     final sdp = JingleSdpCodec.decodeSdp(e.jingleXml);
     if (sdp == null) return;
     await call.session.setRemoteDescription(sdp, isOffer: false);
+    call.remoteDescriptionSet = true;
+    await _drainPendingCandidates(call);
   }
 
   Future<void> _handleIncomingTransportInfo(XmppJingle e) async {
@@ -310,11 +326,39 @@ class CallManager extends ChangeNotifier {
     if (call == null) return;
     final c = JingleSdpCodec.decodeCandidate(e.jingleXml);
     if (c == null) return;
-    await call.session.addRemoteIceCandidate(
-      candidate: c.candidate,
-      sdpMid: c.sdpMid,
-      sdpMLineIndex: c.sdpMLineIndex,
-    );
+    // Trickle candidates that arrive before setRemoteDescription
+    // completes will throw InvalidStateError in the browser. Buffer
+    // and drain once the remote description lands.
+    if (!call.remoteDescriptionSet) {
+      call.pendingCandidates.add(c);
+      return;
+    }
+    try {
+      await call.session.addRemoteIceCandidate(
+        candidate: c.candidate,
+        sdpMid: c.sdpMid,
+        sdpMLineIndex: c.sdpMLineIndex,
+      );
+    } on Object {
+      // Best-effort — a rejected candidate isn't fatal.
+    }
+  }
+
+  Future<void> _drainPendingCandidates(ActiveCall call) async {
+    final pending = List.of(call.pendingCandidates);
+    call.pendingCandidates.clear();
+    for (final c in pending) {
+      try {
+        await call.session.addRemoteIceCandidate(
+          candidate: c.candidate,
+          sdpMid: c.sdpMid,
+          sdpMLineIndex: c.sdpMLineIndex,
+        );
+      } on Object {
+        // Individual candidate failures aren't fatal — skip and
+        // rely on other candidates to establish connectivity.
+      }
+    }
   }
 
   /// Called by the top-level lifecycle observer whenever the app
