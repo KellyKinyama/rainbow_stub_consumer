@@ -211,8 +211,13 @@ class RainbowXmppClient {
     );
   }
 
-  void sendGroupChat({required String roomJid, required String body}) {
-    final stanzaId = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+  void sendGroupChat({
+    required String roomJid,
+    required String body,
+    String? id,
+  }) {
+    final stanzaId =
+        id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
     _channel?.sink.add(
       '<message id="$stanzaId" to="$roomJid" type="groupchat">'
       '<body>${_esc(body)}</body></message>',

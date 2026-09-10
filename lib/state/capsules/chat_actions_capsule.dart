@@ -36,11 +36,12 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
 
   void sendPeer(RainbowUser peer, String body) {
     final key = peerThreadKey(peer);
-    xmpp.sendChat(toBareJid: key, body: body);
+    final stanzaId = _newStanzaId();
+    xmpp.sendChat(toBareJid: key, body: body, id: stanzaId);
     appendLocalMessage(
       key,
       ChatMessage(
-        id: '${DateTime.now().microsecondsSinceEpoch}',
+        id: stanzaId,
         body: body,
         from: xmpp.fullJid,
         to: key,
@@ -52,11 +53,12 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
 
   void sendGroup(RainbowBubble bubble, String body) {
     final key = bubbleThreadKey(bubble);
-    xmpp.sendGroupChat(roomJid: key, body: body);
+    final stanzaId = _newStanzaId();
+    xmpp.sendGroupChat(roomJid: key, body: body, id: stanzaId);
     appendLocalMessage(
       key,
       ChatMessage(
-        id: '${DateTime.now().microsecondsSinceEpoch}',
+        id: stanzaId,
         body: body,
         from: xmpp.fullJid,
         to: key,
@@ -89,3 +91,6 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     createBubble: createBubble,
   );
 }
+
+String _newStanzaId() =>
+    DateTime.now().microsecondsSinceEpoch.toRadixString(16);

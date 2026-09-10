@@ -166,17 +166,20 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - New `test/phase_c_actions_test.dart` proves `chatActionsCapsule.sendPeer` dispatches to XMPP and echoes into `messagesCapsule` with `isMine: true`.
   - Session log: `docs/phase-c-log.md`.
 
-### Phase D — Adopt `flutter_chat_ui` for 1:1 chat (M)
+### Phase D — Adopt `flutter_chat_ui` for 1:1 chat (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - New `lib/ui/chat_view.dart` wrapping `Chat(messages, user, onSendPressed, ...)`.
-  - Convert `messagesCapsule(threadKey)` output to `List<Message>` in a `RearchConsumer` selector.
-  - `ChatPage` becomes a thin wrapper that resolves the peer's JID + user, wires the chat view.
-  - Retire `lib/ui/chat_page.dart`'s custom bubbles (delete or replace the body).
-- **Acceptance:**
-  - Open Bob → chat renders with `flutter_chat_ui` styling (avatars, timestamps, "new" separators).
-  - Send + receive round-trip works end-to-end.
-  - Screenshot committed for reference.
+- **Done:**
+  - New family capsule `chatControllerCapsule(threadKey)` in `messages_capsule.dart` — owns an `InMemoryChatController`, subscribes to XMPP events, mirrors local send-echoes.
+  - `messages_capsule.dart` appender registry became a **list** per thread so `messagesCapsule` and `chatControllerCapsule` can co-exist and both receive fan-out from `appendLocalMessage(...)`.
+  - `RainbowXmppClient.sendGroupChat` gained an optional `id` parameter (matching `sendChat`) so actions can share a stanza id between the wire send and the local echo.
+  - `chatActionsCapsule.sendPeer` / `sendGroup` now generate one stanza id and use it for both the XMPP send AND the local echo — carbons that echo the same id dedupe cleanly inside the controller.
+  - `ChatMessage → Message.text(...)` converter uses `authCapsule.me.id` for `authorId` on locally-echoed messages, the sender's JID local-part for incoming ones.
+  - `ChatPage` rewritten around `Chat(currentUserId, resolveUser, chatController, onMessageSend)` — no more hand-rolled bubbles.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new/rewritten files.
+  - `flutter test --exclude-tags=live` → **18/18** pass (Phase D adds 4 tests in `phase_d_chat_controller_test.dart`: local-echo render, incoming-append, carbon-dedupe, messagesCapsule↔chatControllerCapsule sync).
+  - `flutter build windows --debug` → clean build in ~31s.
+  - Session log: `docs/phase-d-log.md`.
 
 ### Phase E — Adopt `flutter_chat_ui` for group chat (S)
 

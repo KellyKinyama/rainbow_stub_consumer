@@ -60,7 +60,9 @@ class ContactsTab extends RearchConsumer {
                   width: 12,
                   height: 12,
                   decoration: BoxDecoration(
-                    color: _presenceColor(livePresence?.show ?? live.presenceShow),
+                    color: _presenceColor(
+                      livePresence?.show ?? live.presenceShow,
+                    ),
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 2),
                   ),
@@ -89,7 +91,9 @@ class ContactsTab extends RearchConsumer {
   // check both `id@domain` variants (peer JIDs and localhost/prod).
   static Presence? _presenceFor(RainbowUser u, Map<String, Presence> map) {
     for (final key in map.keys) {
-      final local = key.contains('@') ? key.substring(0, key.indexOf('@')) : key;
+      final local = key.contains('@')
+          ? key.substring(0, key.indexOf('@'))
+          : key;
       if (local == u.id) return map[key];
     }
     return null;

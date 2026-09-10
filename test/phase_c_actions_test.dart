@@ -60,51 +60,45 @@ class _FakeXmpp extends RainbowXmppClient {
   }
 }
 
-// Bypass network setup on the real config.
-dynamic _fakeConfig() {
-  // We only need `.setPresence` / `.close` in this test; the real
-  // AppConfig.dev is fine for construction.
-  // Import cycle avoided by using a local getter in `_FakeRest`.
-  // ignore: unused_element
-  return null;
-}
-
 void main() {
-  test('chatActionsCapsule.sendPeer dispatches to XMPP and echoes to messagesCapsule', () async {
-    resetMessagesCapsuleCache();
+  test(
+    'chatActionsCapsule.sendPeer dispatches to XMPP and echoes to messagesCapsule',
+    () async {
+      resetMessagesCapsuleCache();
 
-    final rest = _FakeRest();
-    final xmpp = _FakeXmpp();
+      final rest = _FakeRest();
+      final xmpp = _FakeXmpp();
 
-    final container = MockableContainer();
-    container.mock(restCapsule).apply((use) => rest);
-    container.mock(xmppCapsule).apply((use) => xmpp);
+      final container = MockableContainer();
+      container.mock(restCapsule).apply((use) => rest);
+      container.mock(xmppCapsule).apply((use) => xmpp);
 
-    // Log in so authCapsule flips to SignedIn (needed for isMine derivation).
-    final auth = container.read(authControllerCapsule);
-    await auth.signIn('alice@rainbow-stub.local', 'pw');
+      // Log in so authCapsule flips to SignedIn (needed for isMine derivation).
+      final auth = container.read(authControllerCapsule);
+      await auth.signIn('alice@rainbow-stub.local', 'pw');
 
-    // Prime the messages capsule so its effect registers the appender.
-    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@rainbow-stub.local');
-    final threadKey = 'bob@localhost';
-    final cap = messagesCapsule(threadKey);
-    expect(container.read(cap), isEmpty);
+      // Prime the messages capsule so its effect registers the appender.
+      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@rainbow-stub.local');
+      final threadKey = 'bob@localhost';
+      final cap = messagesCapsule(threadKey);
+      expect(container.read(cap), isEmpty);
 
-    // Send via the actions capsule.
-    final actions = container.read(chatActionsCapsule);
-    actions.sendPeer(peer, 'hello');
+      // Send via the actions capsule.
+      final actions = container.read(chatActionsCapsule);
+      actions.sendPeer(peer, 'hello');
 
-    // Yield one microtask so the ValueWrapper mutation propagates.
-    await Future<void>.delayed(const Duration(milliseconds: 5));
+      // Yield one microtask so the ValueWrapper mutation propagates.
+      await Future<void>.delayed(const Duration(milliseconds: 5));
 
-    expect(xmpp.sent.single.to, threadKey);
-    expect(xmpp.sent.single.body, 'hello');
+      expect(xmpp.sent.single.to, threadKey);
+      expect(xmpp.sent.single.body, 'hello');
 
-    final msgs = container.read(cap);
-    expect(msgs, hasLength(1));
-    expect(msgs.single.body, 'hello');
-    expect(msgs.single.isMine, isTrue);
+      final msgs = container.read(cap);
+      expect(msgs, hasLength(1));
+      expect(msgs.single.body, 'hello');
+      expect(msgs.single.isMine, isTrue);
 
-    container.dispose();
-  });
+      container.dispose();
+    },
+  );
 }

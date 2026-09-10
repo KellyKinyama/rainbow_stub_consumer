@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
@@ -13,17 +14,16 @@ import 'xmpp_capsule.dart';
 typedef ThreadKey = String;
 
 final Map<ThreadKey, Capsule<List<ChatMessage>>> _messagesCache = {};
+final Map<ThreadKey, Capsule<InMemoryChatController>> _controllersCache = {};
 
-// Per-thread appender registered by the capsule's [effect]. Actions
-// (e.g. `chatActionsCapsule.sendPeer`) call it to echo the user's own
-// message into the live list without waiting for a server carbon.
-final Map<ThreadKey, void Function(ChatMessage)> _appenders = {};
+// Per-thread appenders registered by each subscribing capsule's [effect].
+// A single call to [appendLocalMessage] fans out to all appenders so that
+// the reactive list, the flutter_chat_ui controller, and future observers
+// stay in sync.
+final Map<ThreadKey, List<void Function(ChatMessage)>> _appenders = {};
 
-/// Family capsule: returns the ordered list of messages for [threadKey].
-///
-/// Hydration from persisted history (REST or MAM) is intentionally
-/// deferred to Phase D — the initial value is empty and messages are
-/// appended live from the XMPP stream and from local send-echo.
+/// Family capsule: reactive `List<ChatMessage>` for [threadKey]. Kept for
+/// group chat pages that haven't migrated to [chatControllerCapsule] yet.
 Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
   return _messagesCache.putIfAbsent(threadKey, () {
     List<ChatMessage> capsule(CapsuleHandle use) {
@@ -33,10 +33,11 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
 
       use.effect(() {
         void append(ChatMessage m) {
+          if (slot.value.any((existing) => existing.id == m.id)) return;
           slot.value = [...slot.value, m];
         }
 
-        _appenders[threadKey] = append;
+        _registerAppender(threadKey, append);
 
         final StreamSubscription<XmppChatMessage> sub = events
             .where((e) => e is XmppChatMessage)
@@ -57,9 +58,7 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
             });
 
         return () {
-          if (identical(_appenders[threadKey], append)) {
-            _appenders.remove(threadKey);
-          }
+          _unregisterAppender(threadKey, append);
           sub.cancel();
         };
       }, [events, threadKey, myUserId]);
@@ -71,19 +70,105 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
   });
 }
 
-/// Echoes an outbound (local) [msg] into [threadKey]'s live list.
-///
-/// No-op if the thread's messages capsule has never been read in the
-/// current container — matches the previous RainbowSession semantics
-/// (an unopened thread has nothing to render into).
-void appendLocalMessage(ThreadKey threadKey, ChatMessage msg) {
-  _appenders[threadKey]?.call(msg);
+/// Family capsule: `InMemoryChatController` for [threadKey], backing the
+/// `flutter_chat_ui` `Chat` widget. Feeds identical messages to
+/// [messagesCapsule] via the shared appender registry.
+Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
+  return _controllersCache.putIfAbsent(threadKey, () {
+    InMemoryChatController capsule(CapsuleHandle use) {
+      final events = use(xmppEventsCapsule);
+      final myUserId = use(authCapsule).me?.id;
+      final controller = use.disposable<InMemoryChatController>(
+        InMemoryChatController.new,
+        (c) => c.dispose(),
+        [threadKey],
+      );
+
+      use.effect(() {
+        Future<void> insertOnce(Message m) async {
+          if (controller.messages.any((existing) => existing.id == m.id)) {
+            return;
+          }
+          await controller.insertMessage(m);
+        }
+
+        void append(ChatMessage cm) {
+          insertOnce(_toChatUiMessage(cm, myUserId));
+        }
+
+        _registerAppender(threadKey, append);
+
+        final StreamSubscription<XmppChatMessage> sub = events
+            .where((e) => e is XmppChatMessage)
+            .cast<XmppChatMessage>()
+            .where((e) => _belongsToThread(e, threadKey))
+            .listen((e) {
+              final fromLocal = _localPart(e.from);
+              append(
+                ChatMessage(
+                  id: e.stanzaId,
+                  body: e.body,
+                  from: e.from,
+                  to: e.to,
+                  sentAt: DateTime.now(),
+                  isMine: myUserId != null && fromLocal == myUserId,
+                ),
+              );
+            });
+
+        return () {
+          _unregisterAppender(threadKey, append);
+          sub.cancel();
+        };
+      }, [events, threadKey, myUserId]);
+
+      return controller;
+    }
+
+    return capsule;
+  });
 }
 
-/// Clears both the family cache and the appender registry. Test-only.
+/// Echoes an outbound (local) [msg] into every appender registered for
+/// [threadKey]. Both [messagesCapsule] and [chatControllerCapsule] register
+/// their own appenders on first read, so this fans out to whichever
+/// consumer(s) are live.
+void appendLocalMessage(ThreadKey threadKey, ChatMessage msg) {
+  final list = _appenders[threadKey];
+  if (list == null) return;
+  for (final fn in List.of(list)) {
+    fn(msg);
+  }
+}
+
+/// Test-only: clears family caches and the appender registry.
 void resetMessagesCapsuleCache() {
   _messagesCache.clear();
+  _controllersCache.clear();
   _appenders.clear();
+}
+
+Message _toChatUiMessage(ChatMessage cm, String? myUserId) {
+  final authorId = cm.isMine
+      ? (myUserId ?? 'me')
+      : _localPart(cm.from);
+  return Message.text(
+    id: cm.id,
+    authorId: authorId,
+    createdAt: cm.sentAt,
+    text: cm.body,
+  );
+}
+
+void _registerAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
+  _appenders.putIfAbsent(threadKey, () => []).add(fn);
+}
+
+void _unregisterAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
+  final list = _appenders[threadKey];
+  if (list == null) return;
+  list.remove(fn);
+  if (list.isEmpty) _appenders.remove(threadKey);
 }
 
 bool _belongsToThread(XmppChatMessage e, ThreadKey threadKey) {
