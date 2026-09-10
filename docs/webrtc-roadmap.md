@@ -203,6 +203,18 @@ Each phase must ship with:
 - No client code changes beyond the config plumbing — `flutter_webrtc`
   handles TURN natively.
 
+## Known bugs (post live-smoke)
+
+- **Camera / mic tracks not stopped on hang-up.** After a video call
+  ends, the local `MediaStream` from `getUserMedia` isn't fully torn
+  down — the browser tab's camera indicator stays on until reload;
+  same on physical Android devices with the LED. `RTCPeerConnection`
+  closes fine, but `_localStream.getTracks()` is never iterated with
+  `track.stop()`. Fix in `FlutterWebRtcAdapter.dispose()` and on the
+  `session-terminate` path: iterate every track, call `stop()`, then
+  null out `_localStream`. Repro: browser ↔ browser video call, tap
+  hang-up, watch the tab indicator.
+
 **Deferred because**
 - Requires infrastructure we don't need for the day-to-day dev loop.
 - Nothing else in this roadmap unblocks until we hit the "call fails
