@@ -77,19 +77,30 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
   return _controllersCache.putIfAbsent(threadKey, () {
     InMemoryChatController capsule(CapsuleHandle use) {
       final events = use(xmppEventsCapsule);
+      final xmpp = use(xmppCapsule);
       final myUserId = use(authCapsule).me?.id;
       final controller = use.disposable<InMemoryChatController>(
         InMemoryChatController.new,
         (c) => c.dispose(),
         [threadKey],
       );
+      final mamCursor = use.data<int>(0);
+
+      // One-shot MAM hydration when the capsule is first built for this
+      // 1:1 thread. MUC hydration is Phase E.
+      use.callonce(() {
+        if (myUserId != null && !threadKey.contains('@muc.')) {
+          Timer.run(() => xmpp.queryMamWith(threadKey, max: 50));
+        }
+        return null;
+      });
 
       use.effect(() {
-        Future<void> insertOnce(Message m) async {
+        Future<void> insertOnce(Message m, {int? index}) async {
           if (controller.messages.any((existing) => existing.id == m.id)) {
             return;
           }
-          await controller.insertMessage(m);
+          await controller.insertMessage(m, index: index);
         }
 
         void append(ChatMessage cm) {
@@ -98,7 +109,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
 
         _registerAppender(threadKey, append);
 
-        final StreamSubscription<XmppChatMessage> sub = events
+        final StreamSubscription<XmppChatMessage> liveSub = events
             .where((e) => e is XmppChatMessage)
             .cast<XmppChatMessage>()
             .where((e) => _belongsToThread(e, threadKey))
@@ -116,9 +127,33 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               );
             });
 
+        // MAM stream: preserve chronological (oldest-first) order by
+        // inserting at a monotonically-increasing top cursor.
+        final StreamSubscription<XmppMamMessage> mamSub = events
+            .where((e) => e is XmppMamMessage)
+            .cast<XmppMamMessage>()
+            .where((e) => _belongsToMamThread(e, threadKey))
+            .listen((e) {
+              final fromLocal = _localPart(e.from);
+              final msg = _toChatUiMessage(
+                ChatMessage(
+                  id: e.stanzaId,
+                  body: e.body,
+                  from: e.from,
+                  to: e.to,
+                  sentAt: e.sentAt,
+                  isMine: myUserId != null && fromLocal == myUserId,
+                ),
+                myUserId,
+              );
+              insertOnce(msg, index: mamCursor.value);
+              mamCursor.value = mamCursor.value + 1;
+            });
+
         return () {
           _unregisterAppender(threadKey, append);
-          sub.cancel();
+          liveSub.cancel();
+          mamSub.cancel();
         };
       }, [events, threadKey, myUserId]);
 
@@ -149,9 +184,7 @@ void resetMessagesCapsuleCache() {
 }
 
 Message _toChatUiMessage(ChatMessage cm, String? myUserId) {
-  final authorId = cm.isMine
-      ? (myUserId ?? 'me')
-      : _localPart(cm.from);
+  final authorId = cm.isMine ? (myUserId ?? 'me') : _localPart(cm.from);
   return Message.text(
     id: cm.id,
     authorId: authorId,
@@ -172,6 +205,10 @@ void _unregisterAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
 }
 
 bool _belongsToThread(XmppChatMessage e, ThreadKey threadKey) {
+  return _bareJid(e.from) == threadKey || _bareJid(e.to) == threadKey;
+}
+
+bool _belongsToMamThread(XmppMamMessage e, ThreadKey threadKey) {
   return _bareJid(e.from) == threadKey || _bareJid(e.to) == threadKey;
 }
 

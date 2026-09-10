@@ -2,6 +2,7 @@ import 'package:rearch/rearch.dart';
 
 import '../models/auth_state.dart';
 import 'auth_state_capsule.dart';
+import 'messages_capsule.dart';
 import 'rest_capsule.dart';
 import 'xmpp_capsule.dart';
 
@@ -50,6 +51,9 @@ AuthController authControllerCapsule(CapsuleHandle use) {
       // ditto — server may already have invalidated the session.
     }
     rest.setBearer(null);
+    // Drop per-thread chat controllers + MAM cursors so the next signed-in
+    // user builds fresh capsules and re-queries MAM.
+    resetMessagesCapsuleCache();
     authSlot.value = const AuthState.signedOut();
   }
 

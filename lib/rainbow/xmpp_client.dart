@@ -35,6 +35,23 @@ class XmppChatMessage extends XmppEvent {
   final bool isGroupChat;
 }
 
+class XmppMamMessage extends XmppEvent {
+  const XmppMamMessage({
+    required this.from,
+    required this.to,
+    required this.body,
+    required this.stanzaId,
+    required this.sentAt,
+    required this.isGroupChat,
+  });
+  final String from;
+  final String to;
+  final String body;
+  final String stanzaId;
+  final DateTime sentAt;
+  final bool isGroupChat;
+}
+
 class XmppPresenceUpdate extends XmppEvent {
   const XmppPresenceUpdate({
     required this.fromBare,
@@ -172,6 +189,14 @@ class RainbowXmppClient {
   }
 
   void _handleMessage(XmlElement el) {
+    // MAM (XEP-0313) archived message: unwrap <result>/<forwarded>/<message>
+    // and emit as XmppMamMessage so hydration paths can order by sentAt.
+    final mamResult = el.getElement('result');
+    if (mamResult != null && _isMamNamespace(mamResult)) {
+      _handleMamResult(mamResult);
+      return;
+    }
+
     final body = el.getElement('body')?.innerText;
     if (body == null) return;
     final from = el.getAttribute('from') ?? '';
@@ -187,6 +212,34 @@ class RainbowXmppClient {
         isGroupChat: type == 'groupchat',
       ),
     );
+  }
+
+  static bool _isMamNamespace(XmlElement el) {
+    const mam = 'urn:xmpp:mam:2';
+    return el.getAttribute('xmlns') == mam || el.name.namespaceUri == mam;
+  }
+
+  void _handleMamResult(XmlElement result) {
+    final forwarded = result.getElement('forwarded');
+    if (forwarded == null) return;
+    final inner = forwarded.getElement('message');
+    if (inner == null) return;
+    final body = inner.getElement('body')?.innerText;
+    if (body == null) return;
+    final delay = forwarded.getElement('delay');
+    final stamp = delay?.getAttribute('stamp');
+    final sentAt = stamp != null
+        ? DateTime.tryParse(stamp) ?? DateTime.now()
+        : DateTime.now();
+    final ev = XmppMamMessage(
+      from: inner.getAttribute('from') ?? '',
+      to: inner.getAttribute('to') ?? '',
+      body: body,
+      stanzaId: inner.getAttribute('id') ?? '',
+      sentAt: sentAt,
+      isGroupChat: inner.getAttribute('type') == 'groupchat',
+    );
+    _events.add(ev);
   }
 
   void _handlePresence(XmlElement el) {
@@ -226,6 +279,23 @@ class RainbowXmppClient {
 
   void joinMuc(String roomJid, String nick) {
     _channel?.sink.add('<presence to="$roomJid/$nick"/>');
+  }
+
+  /// XEP-0313 MAM query for 1:1 history with [peerBareJid].
+  void queryMamWith(String peerBareJid, {int max = 50}) {
+    final qid = 'mam-${DateTime.now().microsecondsSinceEpoch}';
+    _channel?.sink.add(
+      '<iq type="set" id="$qid">'
+      '<query xmlns="urn:xmpp:mam:2" queryid="$qid">'
+      '<x xmlns="jabber:x:data" type="submit">'
+      '<field var="FORM_TYPE" type="hidden">'
+      '<value>urn:xmpp:mam:2</value>'
+      '</field>'
+      '<field var="with"><value>${_esc(peerBareJid)}</value></field>'
+      '</x>'
+      '<set xmlns="http://jabber.org/protocol/rsm"><max>$max</max></set>'
+      '</query></iq>',
+    );
   }
 
   Future<void> disconnect() async {

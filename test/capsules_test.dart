@@ -140,6 +140,23 @@ void main() {
     expect(fakeRest.logoutCalls, 1);
   });
 
+  test('signOut clears the messages capsule family cache', () async {
+    final controller = container.read(authControllerCapsule);
+    await controller.signIn('alice@rainbow-stub.local', 'pw');
+    // Prime a family capsule so its closure is stored.
+    final capBefore = messagesCapsule('bob@localhost');
+    container.read(capBefore);
+
+    final again = container.read(authControllerCapsule);
+    await again.signOut();
+
+    // After sign-out the family cache is cleared, so a new call for the
+    // same threadKey returns a fresh Capsule<T> instance (different
+    // identity — critical because rearch keys managers by identity).
+    final capAfter = messagesCapsule('bob@localhost');
+    expect(identical(capBefore, capAfter), isFalse);
+  });
+
   test('rosterCapsule loads once auth flips to SignedIn', () async {
     fakeRest.roster.add(
       RosterEntry(
