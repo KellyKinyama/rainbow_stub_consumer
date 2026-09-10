@@ -205,15 +205,15 @@ Each phase must ship with:
 
 ## Known bugs (post live-smoke)
 
-- **Camera / mic tracks not stopped on hang-up.** After a video call
-  ends, the local `MediaStream` from `getUserMedia` isn't fully torn
-  down — the browser tab's camera indicator stays on until reload;
-  same on physical Android devices with the LED. `RTCPeerConnection`
-  closes fine, but `_localStream.getTracks()` is never iterated with
-  `track.stop()`. Fix in `FlutterWebRtcAdapter.dispose()` and on the
-  `session-terminate` path: iterate every track, call `stop()`, then
-  null out `_localStream`. Repro: browser ↔ browser video call, tap
-  hang-up, watch the tab indicator.
+- ~~**Camera / mic tracks not stopped on hang-up.**~~ **Fixed.**
+  `_FlutterWebRtcSession.close()` now iterates every track on the
+  local + remote streams, calls `stop()`, disposes each stream, and
+  nulls both handles before closing the `RTCPeerConnection`. Camera
+  LED / browser tab indicator now clears the moment either side hangs
+  up. Regression guard: any future refactor that swaps `close()`
+  ordering must keep `track.stop()` BEFORE `MediaStream.dispose()` —
+  disposing the stream first orphans the tracks so `.stop()` is a
+  no-op on some platforms.
 
 **Deferred because**
 - Requires infrastructure we don't need for the day-to-day dev loop.

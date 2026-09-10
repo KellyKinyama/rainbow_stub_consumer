@@ -195,9 +195,35 @@ class _FlutterWebRtcSession implements RtcSession {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
-    try {
-      await _localStream?.dispose();
-    } catch (_) {}
+    // flutter_webrtc's MediaStream.dispose() releases the Dart handle
+    // but does NOT stop the underlying MediaStreamTrack — the camera
+    // LED / browser tab indicator stays lit until we explicitly stop
+    // each track. Do that first, then dispose the stream, then close
+    // the peer connection.
+    final local = _localStream;
+    if (local != null) {
+      for (final t in local.getTracks()) {
+        try {
+          await t.stop();
+        } catch (_) {}
+      }
+      try {
+        await local.dispose();
+      } catch (_) {}
+      _localStream = null;
+    }
+    final remote = _remoteStream;
+    if (remote != null) {
+      for (final t in remote.getTracks()) {
+        try {
+          await t.stop();
+        } catch (_) {}
+      }
+      try {
+        await remote.dispose();
+      } catch (_) {}
+      _remoteStream = null;
+    }
     try {
       await pc.close();
     } catch (_) {}
