@@ -28,6 +28,36 @@ final Map<ThreadKey, List<void Function(ChatMessage)>> _appenders = {};
 /// fan out mutations to every live controller for a thread.
 final Map<ThreadKey, List<void Function(_ThreadUpdate)>> _threadUpdaters = {};
 
+/// Per-thread MAM pagination state. Populated by the `<fin/>` listener
+/// inside `chatControllerCapsule` and consumed by [loadOlderMessages].
+final Map<ThreadKey, MamPageState> _mamPageState = {};
+
+/// Snapshot of a thread's MAM pagination cursor.
+class MamPageState {
+  MamPageState({
+    this.oldestStanzaId,
+    this.complete = false,
+    this.loadingQueryId,
+    this.mamInsertIndex = 0,
+  });
+  String? oldestStanzaId;
+  bool complete;
+  String? loadingQueryId;
+
+  /// Insertion index used by the MAM listener when placing an archived
+  /// message into the controller. Reset to 0 at the start of every
+  /// "load older" cycle by [loadOlderMessages] so an older page piles
+  /// on top of the existing hydrated slice.
+  int mamInsertIndex;
+
+  bool get canLoadMore =>
+      !complete && loadingQueryId == null && oldestStanzaId != null;
+}
+
+/// Read-only view of the current pagination state for [threadKey].
+MamPageState mamPageStateOf(ThreadKey threadKey) =>
+    _mamPageState[threadKey] ?? MamPageState();
+
 // Bumped by [resetMessagesCapsuleCache]. Each capsule closure snapshots
 // this at creation and its listeners drop events after a mismatch — so
 // old rearch-container-managed capsules go dormant on signout instead of
@@ -100,7 +130,6 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         (c) => c.dispose(),
         [threadKey],
       );
-      final mamCursor = use.data<int>(0);
       final isMuc = threadKey.contains('@muc.');
 
       // One-shot MAM hydration when the capsule is first built. Works for
@@ -189,13 +218,21 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
             });
 
         // MAM stream: preserve chronological (oldest-first) order by
-        // inserting at a monotonically-increasing top cursor.
+        // inserting at a monotonically-increasing top cursor tracked in
+        // [_mamPageState[threadKey].mamInsertIndex]. Both the initial
+        // hydration and every subsequent "load older" cycle share the
+        // same cursor; [loadOlderMessages] resets it to 0 before each
+        // page so the older slice piles ABOVE the existing top.
         final StreamSubscription<XmppMamMessage> mamSub = events
             .where((e) => e is XmppMamMessage)
             .cast<XmppMamMessage>()
             .where((e) => _belongsToMamThread(e, threadKey))
             .listen((e) {
               if (myGeneration != _cacheGeneration) return;
+              final state = _mamPageState.putIfAbsent(
+                threadKey,
+                MamPageState.new,
+              );
               final senderId = senderIdFor(e.from, isGroupChat: e.isGroupChat);
               insertFromChatMessage(
                 ChatMessage(
@@ -209,10 +246,29 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   replyToStanzaId: e.replyToStanzaId,
                 ),
                 isGroupChat: e.isGroupChat,
-                index: mamCursor.value,
+                index: state.mamInsertIndex,
               );
-              mamCursor.value = mamCursor.value + 1;
+              state.mamInsertIndex = state.mamInsertIndex + 1;
             });
+
+        // XEP-0313 <fin/> — terminates a MAM page. Updates the
+        // pagination cursor for [loadOlderMessages].
+        final finSub = events.where((e) => e is XmppMamFin).cast<XmppMamFin>().listen((e) {
+          if (myGeneration != _cacheGeneration) return;
+          final state = _mamPageState.putIfAbsent(threadKey, MamPageState.new);
+          // Only touch state for pages we're expecting on this thread.
+          // Initial hydration doesn't set loadingQueryId, so we let its
+          // fin populate oldestId / complete when we see a non-empty
+          // `first`.
+          if (state.loadingQueryId != null && state.loadingQueryId != e.queryId) {
+            return;
+          }
+          if (e.first.isNotEmpty) {
+            state.oldestStanzaId = e.first;
+          }
+          state.complete = e.complete;
+          state.loadingQueryId = null;
+        });
 
         // Delivery receipts (XEP-0184 / XEP-0333 received) — stamp
         // deliveredAt on my messages so the Chat widget upgrades the
@@ -334,6 +390,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
           _unregisterAppender(threadKey, append);
           liveSub.cancel();
           mamSub.cancel();
+          finSub.cancel();
           receiptSub.cancel();
           markerSub.cancel();
           reactionsSub.cancel();
@@ -447,6 +504,30 @@ void applyRetractLocally({
   _dispatchUpdate(threadKey, _RetractUpdate(targetStanzaId: targetStanzaId));
 }
 
+/// XEP-0313 "load older" — fires a MAM query anchored `<before>` the
+/// current oldest message we have for [threadKey], and resets the
+/// insertion cursor so the returned page piles on top of the existing
+/// hydrated slice. Returns `false` when the archive is already
+/// exhausted, a page is in flight, or we don't yet know an anchor
+/// (i.e. the initial hydration hasn't completed). Returns `true` when
+/// a request was actually dispatched.
+bool loadOlderMessages(
+  RainbowXmppClient xmpp,
+  ThreadKey threadKey, {
+  int max = 50,
+}) {
+  final state = _mamPageState.putIfAbsent(threadKey, MamPageState.new);
+  if (!state.canLoadMore) return false;
+  state.mamInsertIndex = 0;
+  final qid = xmpp.queryMamWith(
+    threadKey,
+    max: max,
+    beforeStanzaId: state.oldestStanzaId,
+  );
+  state.loadingQueryId = qid;
+  return true;
+}
+
 void _dispatchUpdate(ThreadKey threadKey, _ThreadUpdate update) {
   final list = _threadUpdaters[threadKey];
   if (list == null) return;
@@ -489,6 +570,7 @@ void resetMessagesCapsuleCache() {
   _typingCache.clear();
   _appenders.clear();
   _threadUpdaters.clear();
+  _mamPageState.clear();
   _cacheGeneration++;
 }
 

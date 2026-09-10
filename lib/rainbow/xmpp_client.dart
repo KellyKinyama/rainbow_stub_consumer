@@ -161,6 +161,24 @@ class XmppSentAck extends XmppEvent {
   final String stanzaId;
 }
 
+/// End of a XEP-0313 MAM page — carries the RSM window bounds so
+/// callers can drive "load older" pagination without buffering the
+/// entire archive up-front.
+class XmppMamFin extends XmppEvent {
+  const XmppMamFin({
+    required this.queryId,
+    required this.complete,
+    required this.first,
+    required this.last,
+    required this.count,
+  });
+  final String queryId;
+  final bool complete;
+  final String first;
+  final String last;
+  final int count;
+}
+
 class RainbowXmppClient {
   RainbowXmppClient({
     required this.wsUrl,
@@ -507,6 +525,31 @@ class RainbowXmppClient {
         _handleMessage(el);
       case 'presence':
         _handlePresence(el);
+      case 'iq':
+        _handleIq(el);
+    }
+  }
+
+  void _handleIq(XmlElement el) {
+    // We only care about MAM <fin/> right now — every other iq we
+    // receive is a bind/enable response consumed synchronously during
+    // connect() / resume(), never through _routeStanza.
+    final fin = el.getElement('fin');
+    if (fin != null && _isMamNamespace(fin)) {
+      final set = fin.getElement('set');
+      final first = set?.getElement('first')?.innerText ?? '';
+      final last = set?.getElement('last')?.innerText ?? '';
+      final count = int.tryParse(set?.getElement('count')?.innerText ?? '') ?? 0;
+      final complete = fin.getAttribute('complete') == 'true';
+      _events.add(
+        XmppMamFin(
+          queryId: el.getAttribute('id') ?? '',
+          complete: complete,
+          first: first,
+          last: last,
+          count: count,
+        ),
+      );
     }
   }
 
@@ -881,9 +924,20 @@ class RainbowXmppClient {
     );
   }
 
-  /// XEP-0313 MAM query for 1:1 history with [peerBareJid].
-  void queryMamWith(String peerBareJid, {int max = 50}) {
+  /// XEP-0313 MAM query for 1:1 history with [peerBareJid] (or a MUC
+  /// room bare JID for group history). Pass [beforeStanzaId] to fetch
+  /// the previous page relative to a known cursor. Returns the query
+  /// id so the caller can pair the [XmppMamFin] that eventually
+  /// terminates the page.
+  String queryMamWith(
+    String peerBareJid, {
+    int max = 50,
+    String? beforeStanzaId,
+  }) {
     final qid = 'mam-${DateTime.now().microsecondsSinceEpoch}';
+    final beforeEl = (beforeStanzaId == null || beforeStanzaId.isEmpty)
+        ? ''
+        : '<before>${_esc(beforeStanzaId)}</before>';
     _send(
       '<iq type="set" id="$qid">'
       '<query xmlns="urn:xmpp:mam:2" queryid="$qid">'
@@ -893,9 +947,10 @@ class RainbowXmppClient {
       '</field>'
       '<field var="with"><value>${_esc(peerBareJid)}</value></field>'
       '</x>'
-      '<set xmlns="http://jabber.org/protocol/rsm"><max>$max</max></set>'
+      '<set xmlns="http://jabber.org/protocol/rsm"><max>$max</max>$beforeEl</set>'
       '</query></iq>',
     );
+    return qid;
   }
 
   Future<void> disconnect() async {

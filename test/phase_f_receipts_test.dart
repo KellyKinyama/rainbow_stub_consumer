@@ -91,7 +91,11 @@ class _FakeXmpp extends RainbowXmppClient {
   }
 
   @override
-  void queryMamWith(String peerBareJid, {int max = 50}) {}
+  String queryMamWith(
+    String peerBareJid, {
+    int max = 50,
+    String? beforeStanzaId,
+  }) => 'fake-mam-qid';
 
   void pushIncoming(XmppEvent e) => _events.add(e);
 }
