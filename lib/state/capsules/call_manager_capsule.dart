@@ -255,6 +255,7 @@ class CallManager extends ChangeNotifier {
   }
 
   Future<void> _onJingle(XmppJingle e) async {
+    // ignore: avoid_print
     switch (e.action) {
       case 'session-initiate':
         await _handleIncomingInitiate(e);

@@ -6,6 +6,7 @@ import 'package:rearch/rearch.dart';
 import 'state/capsules/auth_state_capsule.dart';
 import 'state/capsules/call_manager_capsule.dart';
 import 'state/models/auth_state.dart';
+import 'ui/call_overlay.dart';
 import 'ui/diagnostics_overlay.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
@@ -25,6 +26,14 @@ class RainbowConsumerApp extends StatelessWidget {
         ),
       ),
       home: const _AuthGate(),
+      // Stacks the incoming-call banner above every route so it stays
+      // visible inside chat pages, bubble pages, etc.
+      builder: (context, child) => Stack(
+        children: [
+          if (child != null) Positioned.fill(child: child),
+          const Align(alignment: Alignment.topCenter, child: CallOverlay()),
+        ],
+      ),
     );
   }
 }

@@ -7,7 +7,6 @@ import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
 import 'bubbles_tab.dart';
-import 'call_overlay.dart';
 import 'contacts_tab.dart';
 
 class HomePage extends RearchConsumer {
@@ -60,12 +59,7 @@ class HomePage extends RearchConsumer {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          Positioned.fill(child: pages[tab]),
-          const Align(alignment: Alignment.topCenter, child: CallOverlay()),
-        ],
-      ),
+      body: pages[tab],
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: setTab,
