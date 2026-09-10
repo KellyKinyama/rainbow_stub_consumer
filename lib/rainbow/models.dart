@@ -104,6 +104,9 @@ class ChatMessage {
     required this.sentAt,
     this.isMine = false,
     this.attachment,
+    this.replyToStanzaId,
+    this.reactions,
+    this.editedAt,
   });
 
   final String id;
@@ -113,6 +116,9 @@ class ChatMessage {
   final DateTime sentAt;
   final bool isMine;
   final FileDescriptor? attachment;
+  final String? replyToStanzaId;
+  final Map<String, List<String>>? reactions;
+  final DateTime? editedAt;
 }
 
 /// Metadata for an attached file returned by the stub's file endpoint.

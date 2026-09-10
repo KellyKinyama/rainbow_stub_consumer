@@ -240,14 +240,35 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - Progress indicators — upload is currently opaque; can wire via a progress-reporting HTTP transport later.
   - MAM history for attachments across sessions — should just work because the stub archives the full stanza including the `<file>` child; not exercised in a test-drive scenario yet.
 
-### Phase H — Message reactions + edits + replies (M)
+### Phase H — Message reactions + edits + replies (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - Long-press message → `showMenu` with Reply / React / Edit / Delete.
-  - Reactions: XEP-0444 `<reactions/>`.
-  - Edits: XEP-0308 `<replace/>`.
-  - Replies: XEP-0461 `<reply/>` → chat_ui renders quoted card via `metadata: {replyTo: {id, text, author}}`.
-- **Acceptance:** closes ROADMAP § 5.1 (edit), § 5.5 (reactions), § 5.8 (threads).
+- **Done:**
+  - **Reactions (XEP-0444):** new `XmppReactions(fromBare, targetStanzaId, emojis)` event. `RainbowXmppClient.sendReactions(toBareJid, targetStanzaId, emojis, isGroupChat)` writes `<reactions xmlns="urn:xmpp:reactions:0" id="…"><reaction>…</reaction>…</reactions>`. Parser reads the same element. Semantics match the XEP: the payload is an idempotent full snapshot of the sender's reactions on the target — an empty list clears them.
+  - **Edits (XEP-0308):** new `XmppMessageCorrection(fromBare, originalStanzaId, newBody, newStanzaId, isGroupChat)` event. `RainbowXmppClient.sendChatCorrection(toBareJid, originalStanzaId, newBody, isGroupChat)` emits a message with `<body>` and `<replace xmlns="urn:xmpp:message-correct:0" id="original"/>`. Parser detects `<replace>` alongside a body and emits the correction event instead of a fresh chat message so consumers never render the correction as a duplicate.
+  - **Replies (XEP-0461):** `XmppChatMessage` and `XmppMamMessage` grew a `replyToStanzaId` field. `sendChat` / `sendGroupChat` gained optional `replyToStanzaId` — serialized as `<reply xmlns="urn:xmpp:reply:0" id="…"/>`. `ChatMessage` and `Message.replyToMessageId` carry it downstream.
+  - **Capsule wiring:** two new stream subscriptions in `chatControllerCapsule` — reactions events funnel through `_applyReactions(controller, targetStanzaId, fromUserId, emojis)` which replaces the sender's contribution in the message's reactions map. Corrections funnel through `_applyEdit(controller, originalStanzaId, newBody)` which uses `TextMessage.copyWith(text, editedAt)` (or `ImageMessage/FileMessage` `updatedAt` for the caption/name).
+  - **Local echo for outbound reactions/edits:** new `applyReactionsLocally` / `applyEditLocally` top-level functions + a `_threadUpdaters` registry keyed by threadKey (same pattern as `_appenders`). `chatActionsCapsule.reactToPeer` / `reactToGroup` / `editPeer` / `editGroup` dispatch to XMPP AND fan-out to the local controller instantly.
+  - **`_toChatUiMessage` extended:** now passes `replyToMessageId`, `reactions`, and `editedAt` (`TextMessage` only) through to the produced `Message.text` / `.image` / `.file`.
+  - **`ChatPage` UI:**
+    - `use.state<Message?>` for `replyingTo` and `use.state<TextMessage?>` for `editing`.
+    - `Chat.onMessageLongPress` opens a modal bottom sheet with:
+      - 6 quick-react emojis (👍 ❤️ 😂 😮 🎉 🔥) → `actions.reactToPeer(peer, targetStanzaId: m.id, emojis: [chosen])`.
+      - "Reply" → sets `replyingTo`, shows a reply banner above the composer.
+      - "Edit" (my messages only, TextMessage only) → sets `editing`, prefills the composer.
+      - "Copy" (TextMessage only) → `Clipboard.setData`.
+    - On composer send: if `editing` is set → `actions.editPeer(peer, originalStanzaId: editing.id, newBody: trimmed)`; else → `actions.sendPeer(peer, trimmed, replyToStanzaId: replyingTo?.id)`.
+    - Two small banner widgets (`_ReplyBanner`, `_EditBanner`) with an X-out control.
+  - **Stub forwarding:** extended `Ns` with `reactions = 'urn:xmpp:reactions:0'`; the "forward without persist" filter now also matches messages whose only child is `<reactions>` so those pass through the router.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new files.
+  - `flutter test --exclude-tags=live` → **42/42** pass (Phase H adds 6 tests in `phase_h_reactions_edits_replies_test.dart`: local reaction echo, inbound reaction merge, edit round-trip + editedAt stamp, inbound correction body swap, outbound reply propagation, inbound reply carrying `replyToMessageId`).
+  - `flutter build windows --debug` → clean build in ~16s.
+  - Stub `dart test` → 40/41 pass (`users_test.dart` multipart-avatar test is the known pre-existing Windows socket-starvation flake, unrelated to Phase H).
+  - Session log: `docs/phase-h-log.md`.
+- **Deferred:**
+  - **XEP-0424 message retraction ("delete for everyone"):** would surface as a `<retract id="…"/>` element on a new message; UI-side would call `controller.removeMessage`. Skipped in favor of the copy/edit/react trio.
+  - **Group reactions/edits in the bubble chat page:** the actions expose `reactToGroup` / `editGroup`, but the long-press UI is only wired on `ChatPage`. Adding it to `BubbleChatPage` is one drop-in expression away — deferred to keep the diff small.
+  - **Rendering the reply preview inline:** `Message.replyToMessageId` is set; the default `flutter_chat_ui` renderer doesn't automatically show the quoted card. Custom `textMessageBuilder` that looks up the target and renders a preview would take that to full parity — deferred.
 
 ## 7. File-level change plan
 

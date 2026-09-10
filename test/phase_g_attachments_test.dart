@@ -90,13 +90,9 @@ class _FakeXmpp extends RainbowXmppClient {
     required String body,
     String? id,
     XmppAttachment? attachment,
+    String? replyToStanzaId,
   }) {
-    sent.add((
-      to: toBareJid,
-      body: body,
-      id: id,
-      attachment: attachment,
-    ));
+    sent.add((to: toBareJid, body: body, id: id, attachment: attachment));
   }
 
   @override
@@ -125,55 +121,65 @@ void main() {
     container.dispose();
   });
 
-  test('sendPeerFile uploads bytes then sends XMPP with a <file> attachment', () async {
-    const threadKey = 'bob@localhost';
-    final controller = container.read(chatControllerCapsule(threadKey));
-    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
-    final bytes = utf8.encode('hello file');
+  test(
+    'sendPeerFile uploads bytes then sends XMPP with a <file> attachment',
+    () async {
+      const threadKey = 'bob@localhost';
+      final controller = container.read(chatControllerCapsule(threadKey));
+      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+      final bytes = utf8.encode('hello file');
 
-    await container.read(chatActionsCapsule).sendPeerFile(
-      peer,
-      bytes: bytes,
-      fileName: 'note.txt',
-      mimeType: 'text/plain',
-    );
+      await container
+          .read(chatActionsCapsule)
+          .sendPeerFile(
+            peer,
+            bytes: bytes,
+            fileName: 'note.txt',
+            mimeType: 'text/plain',
+          );
 
-    expect(fakeRest.uploads.single.peer, threadKey);
-    expect(fakeRest.uploads.single.name, 'note.txt');
-    expect(fakeRest.uploads.single.mime, 'text/plain');
+      expect(fakeRest.uploads.single.peer, threadKey);
+      expect(fakeRest.uploads.single.name, 'note.txt');
+      expect(fakeRest.uploads.single.mime, 'text/plain');
 
-    final s = fakeXmpp.sent.single;
-    expect(s.to, threadKey);
-    expect(s.attachment, isNotNull);
-    expect(s.attachment!.fileName, 'note.txt');
-    expect(s.attachment!.mimeType, 'text/plain');
-    expect(s.attachment!.url, 'https://stub/files/file-1/data');
+      final s = fakeXmpp.sent.single;
+      expect(s.to, threadKey);
+      expect(s.attachment, isNotNull);
+      expect(s.attachment!.fileName, 'note.txt');
+      expect(s.attachment!.mimeType, 'text/plain');
+      expect(s.attachment!.url, 'https://stub/files/file-1/data');
 
-    // Local echo renders as a FileMessage (non-image mime).
-    await Future<void>.delayed(const Duration(milliseconds: 5));
-    final m = controller.messages.single as FileMessage;
-    expect(m.name, 'note.txt');
-    expect(m.source, 'https://stub/files/file-1/data');
-  });
+      // Local echo renders as a FileMessage (non-image mime).
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final m = controller.messages.single as FileMessage;
+      expect(m.name, 'note.txt');
+      expect(m.source, 'https://stub/files/file-1/data');
+    },
+  );
 
-  test('sendPeerFile with an image mime renders as Message.image locally', () async {
-    const threadKey = 'bob@localhost';
-    final controller = container.read(chatControllerCapsule(threadKey));
-    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+  test(
+    'sendPeerFile with an image mime renders as Message.image locally',
+    () async {
+      const threadKey = 'bob@localhost';
+      final controller = container.read(chatControllerCapsule(threadKey));
+      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
 
-    await container.read(chatActionsCapsule).sendPeerFile(
-      peer,
-      bytes: List.filled(64, 0),
-      fileName: 'photo.jpg',
-      mimeType: 'image/jpeg',
-    );
+      await container
+          .read(chatActionsCapsule)
+          .sendPeerFile(
+            peer,
+            bytes: List.filled(64, 0),
+            fileName: 'photo.jpg',
+            mimeType: 'image/jpeg',
+          );
 
-    await Future<void>.delayed(const Duration(milliseconds: 5));
+      await Future<void>.delayed(const Duration(milliseconds: 5));
 
-    final m = controller.messages.single;
-    expect(m, isA<ImageMessage>());
-    expect((m as ImageMessage).source, contains('/files/'));
-  });
+      final m = controller.messages.single;
+      expect(m, isA<ImageMessage>());
+      expect((m as ImageMessage).source, contains('/files/'));
+    },
+  );
 
   test('incoming XMPP <file> attachment surfaces as ImageMessage', () async {
     const threadKey = 'bob@localhost';

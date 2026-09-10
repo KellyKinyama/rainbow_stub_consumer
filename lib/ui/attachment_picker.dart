@@ -90,13 +90,10 @@ class AuthedImage extends RearchConsumer {
   @override
   Widget build(BuildContext context, WidgetHandle use) {
     final rest = use(restCapsule);
-    final future = use.memo<Future<Uint8List>>(
-      () async {
-        final bytes = await rest.downloadFileBytes(url);
-        return Uint8List.fromList(bytes);
-      },
-      [url, rest],
-    );
+    final future = use.memo<Future<Uint8List>>(() async {
+      final bytes = await rest.downloadFileBytes(url);
+      return Uint8List.fromList(bytes);
+    }, [url, rest]);
     return FutureBuilder<Uint8List>(
       future: future,
       builder: (ctx, snap) {

@@ -19,10 +19,20 @@ class ChatActions {
     required this.sendChatState,
     required this.sendPeerFile,
     required this.sendGroupFile,
+    required this.reactToPeer,
+    required this.reactToGroup,
+    required this.editPeer,
+    required this.editGroup,
   });
 
-  final void Function(RainbowUser peer, String body) sendPeer;
-  final void Function(RainbowBubble bubble, String body) sendGroup;
+  final void Function(RainbowUser peer, String body, {String? replyToStanzaId})
+  sendPeer;
+  final void Function(
+    RainbowBubble bubble,
+    String body, {
+    String? replyToStanzaId,
+  })
+  sendGroup;
   final void Function(RainbowBubble bubble) joinMuc;
   final Future<void> Function(String show, {String? status}) setMyPresence;
   final Future<RainbowBubble> Function(String name, {String? topic})
@@ -42,6 +52,30 @@ class ChatActions {
     required String mimeType,
   })
   sendGroupFile;
+  final void Function(
+    RainbowUser peer, {
+    required String targetStanzaId,
+    required List<String> emojis,
+  })
+  reactToPeer;
+  final void Function(
+    RainbowBubble bubble, {
+    required String targetStanzaId,
+    required List<String> emojis,
+  })
+  reactToGroup;
+  final void Function(
+    RainbowUser peer, {
+    required String originalStanzaId,
+    required String newBody,
+  })
+  editPeer;
+  final void Function(
+    RainbowBubble bubble, {
+    required String originalStanzaId,
+    required String newBody,
+  })
+  editGroup;
 }
 
 ChatActions chatActionsCapsule(CapsuleHandle use) {
@@ -53,10 +87,15 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
   String peerThreadKey(RainbowUser peer) => '${peer.id}@${config.xmppDomain}';
   String bubbleThreadKey(RainbowBubble b) => '${b.id}@muc.${config.xmppDomain}';
 
-  void sendPeer(RainbowUser peer, String body) {
+  void sendPeer(RainbowUser peer, String body, {String? replyToStanzaId}) {
     final key = peerThreadKey(peer);
     final stanzaId = _newStanzaId();
-    xmpp.sendChat(toBareJid: key, body: body, id: stanzaId);
+    xmpp.sendChat(
+      toBareJid: key,
+      body: body,
+      id: stanzaId,
+      replyToStanzaId: replyToStanzaId,
+    );
     appendLocalMessage(
       key,
       ChatMessage(
@@ -66,14 +105,20 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
         to: key,
         sentAt: DateTime.now(),
         isMine: true,
+        replyToStanzaId: replyToStanzaId,
       ),
     );
   }
 
-  void sendGroup(RainbowBubble bubble, String body) {
+  void sendGroup(RainbowBubble bubble, String body, {String? replyToStanzaId}) {
     final key = bubbleThreadKey(bubble);
     final stanzaId = _newStanzaId();
-    xmpp.sendGroupChat(roomJid: key, body: body, id: stanzaId);
+    xmpp.sendGroupChat(
+      roomJid: key,
+      body: body,
+      id: stanzaId,
+      replyToStanzaId: replyToStanzaId,
+    );
     appendLocalMessage(
       key,
       ChatMessage(
@@ -83,6 +128,7 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
         to: key,
         sentAt: DateTime.now(),
         isMine: true,
+        replyToStanzaId: replyToStanzaId,
       ),
     );
   }
@@ -192,6 +238,87 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     );
   }
 
+  void reactToPeer(
+    RainbowUser peer, {
+    required String targetStanzaId,
+    required List<String> emojis,
+  }) {
+    xmpp.sendReactions(
+      toBareJid: peerThreadKey(peer),
+      targetStanzaId: targetStanzaId,
+      emojis: emojis,
+    );
+    // Local echo so the sender's own UI shows the reaction instantly.
+    final myId = auth.me?.id;
+    if (myId != null) {
+      applyReactionsLocally(
+        threadKey: peerThreadKey(peer),
+        targetStanzaId: targetStanzaId,
+        fromUserId: myId,
+        emojis: emojis,
+      );
+    }
+  }
+
+  void reactToGroup(
+    RainbowBubble bubble, {
+    required String targetStanzaId,
+    required List<String> emojis,
+  }) {
+    xmpp.sendReactions(
+      toBareJid: bubbleThreadKey(bubble),
+      targetStanzaId: targetStanzaId,
+      emojis: emojis,
+      isGroupChat: true,
+    );
+    final myId = auth.me?.id;
+    if (myId != null) {
+      applyReactionsLocally(
+        threadKey: bubbleThreadKey(bubble),
+        targetStanzaId: targetStanzaId,
+        fromUserId: myId,
+        emojis: emojis,
+      );
+    }
+  }
+
+  void editPeer(
+    RainbowUser peer, {
+    required String originalStanzaId,
+    required String newBody,
+  }) {
+    final key = peerThreadKey(peer);
+    xmpp.sendChatCorrection(
+      toBareJid: key,
+      originalStanzaId: originalStanzaId,
+      newBody: newBody,
+    );
+    applyEditLocally(
+      threadKey: key,
+      originalStanzaId: originalStanzaId,
+      newBody: newBody,
+    );
+  }
+
+  void editGroup(
+    RainbowBubble bubble, {
+    required String originalStanzaId,
+    required String newBody,
+  }) {
+    final key = bubbleThreadKey(bubble);
+    xmpp.sendChatCorrection(
+      toBareJid: key,
+      originalStanzaId: originalStanzaId,
+      newBody: newBody,
+      isGroupChat: true,
+    );
+    applyEditLocally(
+      threadKey: key,
+      originalStanzaId: originalStanzaId,
+      newBody: newBody,
+    );
+  }
+
   return ChatActions(
     sendPeer: sendPeer,
     sendGroup: sendGroup,
@@ -201,6 +328,10 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     sendChatState: sendChatState,
     sendPeerFile: sendPeerFile,
     sendGroupFile: sendGroupFile,
+    reactToPeer: reactToPeer,
+    reactToGroup: reactToGroup,
+    editPeer: editPeer,
+    editGroup: editGroup,
   );
 }
 

@@ -57,7 +57,13 @@ class _FakeXmpp extends RainbowXmppClient {
   Future<void> disconnect() async {}
 
   @override
-  void sendChat({required String toBareJid, required String body, String? id, XmppAttachment? attachment}) {
+  void sendChat({
+    required String toBareJid,
+    required String body,
+    String? id,
+    XmppAttachment? attachment,
+    String? replyToStanzaId,
+  }) {
     sent.add((to: toBareJid, body: body, id: id));
   }
 

@@ -23,6 +23,11 @@ final Map<ThreadKey, Capsule<bool>> _typingCache = {};
 // stay in sync.
 final Map<ThreadKey, List<void Function(ChatMessage)>> _appenders = {};
 
+/// Per-thread updater functions registered by `chatControllerCapsule`'s
+/// effect. Actions call [applyReactionsLocally] / [applyEditLocally] to
+/// fan out mutations to every live controller for a thread.
+final Map<ThreadKey, List<void Function(_ThreadUpdate)>> _threadUpdaters = {};
+
 // Bumped by [resetMessagesCapsuleCache]. Each capsule closure snapshots
 // this at creation and its listeners drop events after a mismatch — so
 // old rearch-container-managed capsules go dormant on signout instead of
@@ -164,6 +169,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   sentAt: DateTime.now(),
                   isMine: isMine,
                   attachment: _fromXmpp(e.attachment),
+                  replyToStanzaId: e.replyToStanzaId,
                 ),
                 isGroupChat: e.isGroupChat,
               );
@@ -200,6 +206,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   sentAt: e.sentAt,
                   isMine: myUserId != null && senderId == myUserId,
                   attachment: _fromXmpp(e.attachment),
+                  replyToStanzaId: e.replyToStanzaId,
                 ),
                 isGroupChat: e.isGroupChat,
                 index: mamCursor.value,
@@ -233,12 +240,73 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               await _stampStatus(controller, stanzaId: e.stanzaId, seen: true);
             });
 
+        // XEP-0444 reactions from the peer — same reducer as local
+        // reactions but keyed on the sender's local-part.
+        final reactionsSub = events
+            .where((e) => e is XmppReactions)
+            .cast<XmppReactions>()
+            .where((e) => e.fromBare == threadKey)
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              await _applyReactions(
+                controller,
+                targetStanzaId: e.targetStanzaId,
+                fromUserId: _localPart(e.fromBare),
+                emojis: e.emojis,
+              );
+            });
+
+        // XEP-0308 corrections from the peer — replace the original
+        // message's body in-place and stamp editedAt.
+        final correctionSub = events
+            .where((e) => e is XmppMessageCorrection)
+            .cast<XmppMessageCorrection>()
+            .where((e) => e.fromBare == threadKey)
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              await _applyEdit(
+                controller,
+                originalStanzaId: e.originalStanzaId,
+                newBody: e.newBody,
+              );
+            });
+
+        // Register a thread updater so [applyReactionsLocally] and
+        // [applyEditLocally] fan out to us.
+        void handleUpdate(_ThreadUpdate u) async {
+          if (myGeneration != _cacheGeneration) return;
+          switch (u) {
+            case _ReactionUpdate(
+              :final targetStanzaId,
+              :final fromUserId,
+              :final emojis,
+            ):
+              await _applyReactions(
+                controller,
+                targetStanzaId: targetStanzaId,
+                fromUserId: fromUserId,
+                emojis: emojis,
+              );
+            case _EditUpdate(:final originalStanzaId, :final newBody):
+              await _applyEdit(
+                controller,
+                originalStanzaId: originalStanzaId,
+                newBody: newBody,
+              );
+          }
+        }
+
+        _threadUpdaters.putIfAbsent(threadKey, () => []).add(handleUpdate);
+
         return () {
           _unregisterAppender(threadKey, append);
           liveSub.cancel();
           mamSub.cancel();
           receiptSub.cancel();
           markerSub.cancel();
+          reactionsSub.cancel();
+          correctionSub.cancel();
+          _threadUpdaters[threadKey]?.remove(handleUpdate);
         };
       }, [events, threadKey, myUserId]);
 
@@ -304,6 +372,65 @@ void appendLocalMessage(ThreadKey threadKey, ChatMessage msg) {
   }
 }
 
+/// Updates the `reactions` map on the message with [targetStanzaId] in
+/// [threadKey]. Semantics match XEP-0444: [emojis] is the *full* set of
+/// reactions from [fromUserId] on the target — an empty list clears them.
+void applyReactionsLocally({
+  required ThreadKey threadKey,
+  required String targetStanzaId,
+  required String fromUserId,
+  required List<String> emojis,
+}) {
+  _dispatchUpdate(
+    threadKey,
+    _ReactionUpdate(
+      targetStanzaId: targetStanzaId,
+      fromUserId: fromUserId,
+      emojis: emojis,
+    ),
+  );
+}
+
+/// XEP-0308-style edit: replaces the `body` of [originalStanzaId] in
+/// [threadKey] and stamps `editedAt`.
+void applyEditLocally({
+  required ThreadKey threadKey,
+  required String originalStanzaId,
+  required String newBody,
+}) {
+  _dispatchUpdate(
+    threadKey,
+    _EditUpdate(originalStanzaId: originalStanzaId, newBody: newBody),
+  );
+}
+
+void _dispatchUpdate(ThreadKey threadKey, _ThreadUpdate update) {
+  final list = _threadUpdaters[threadKey];
+  if (list == null) return;
+  for (final fn in List.of(list)) {
+    fn(update);
+  }
+}
+
+sealed class _ThreadUpdate {}
+
+class _ReactionUpdate extends _ThreadUpdate {
+  _ReactionUpdate({
+    required this.targetStanzaId,
+    required this.fromUserId,
+    required this.emojis,
+  });
+  final String targetStanzaId;
+  final String fromUserId;
+  final List<String> emojis;
+}
+
+class _EditUpdate extends _ThreadUpdate {
+  _EditUpdate({required this.originalStanzaId, required this.newBody});
+  final String originalStanzaId;
+  final String newBody;
+}
+
 /// Clears family caches, the appender registry, and bumps the cache
 /// generation counter — old rearch-container-managed capsules that
 /// snapshot the previous generation will drop future events instead of
@@ -313,6 +440,7 @@ void resetMessagesCapsuleCache() {
   _controllersCache.clear();
   _typingCache.clear();
   _appenders.clear();
+  _threadUpdaters.clear();
   _cacheGeneration++;
 }
 
@@ -327,6 +455,8 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
       source: a.downloadUrl,
       text: cm.body,
       size: a.size,
+      replyToMessageId: cm.replyToStanzaId,
+      reactions: cm.reactions,
     );
   }
   if (a != null) {
@@ -339,17 +469,19 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
       name: a.fileName,
       mimeType: a.mimeType,
       size: a.size,
+      replyToMessageId: cm.replyToStanzaId,
+      reactions: cm.reactions,
     );
   }
   return Message.text(
     id: cm.id,
     authorId: authorId,
     createdAt: cm.sentAt,
-    // `sentAt` is what makes Chat show at least the "sent" checkmark for
-    // my own messages; deliveredAt/seenAt are stamped later by
-    // receipt/marker events.
     sentAt: cm.isMine ? cm.sentAt : null,
     text: cm.body,
+    replyToMessageId: cm.replyToStanzaId,
+    reactions: cm.reactions,
+    editedAt: cm.editedAt,
   );
 }
 
@@ -372,9 +504,7 @@ Future<void> _stampStatus(
   bool delivered = false,
   bool seen = false,
 }) async {
-  final old = controller.messages
-      .where((m) => m.id == stanzaId)
-      .firstOrNull;
+  final old = controller.messages.where((m) => m.id == stanzaId).firstOrNull;
   if (old == null) return;
   final now = DateTime.now();
   final Message updated;
@@ -400,6 +530,77 @@ Future<void> _stampStatus(
   if (identical(updated, old)) return;
   await controller.updateMessage(old, updated);
 }
+
+/// Applies a XEP-0444 reactions snapshot to the message with
+/// [targetStanzaId]. Replaces [fromUserId]'s reactions on the target.
+Future<void> _applyReactions(
+  InMemoryChatController controller, {
+  required String targetStanzaId,
+  required String fromUserId,
+  required List<String> emojis,
+}) async {
+  final old = controller.messages
+      .where((m) => m.id == targetStanzaId)
+      .firstOrNull;
+  if (old == null) return;
+  final oldMap = _reactionsOf(old);
+  final next = <String, List<String>>{};
+  oldMap.forEach((emoji, users) {
+    final filtered = users.where((u) => u != fromUserId).toList();
+    if (filtered.isNotEmpty) next[emoji] = filtered;
+  });
+  for (final e in emojis) {
+    final list = next.putIfAbsent(e, () => <String>[]);
+    if (!list.contains(fromUserId)) list.add(fromUserId);
+  }
+  final Message updated;
+  switch (old) {
+    case TextMessage m:
+      updated = m.copyWith(reactions: next);
+    case ImageMessage m:
+      updated = m.copyWith(reactions: next);
+    case FileMessage m:
+      updated = m.copyWith(reactions: next);
+    default:
+      return;
+  }
+  await controller.updateMessage(old, updated);
+}
+
+/// XEP-0308-style body replacement + editedAt stamp.
+Future<void> _applyEdit(
+  InMemoryChatController controller, {
+  required String originalStanzaId,
+  required String newBody,
+}) async {
+  final old = controller.messages
+      .where((m) => m.id == originalStanzaId)
+      .firstOrNull;
+  if (old == null) return;
+  final now = DateTime.now();
+  final Message updated;
+  switch (old) {
+    case TextMessage m:
+      updated = m.copyWith(text: newBody, editedAt: now);
+    case ImageMessage m:
+      // ImageMessage has no editedAt; use updatedAt to signal a change.
+      updated = m.copyWith(text: newBody, updatedAt: now);
+    case FileMessage m:
+      // FileMessage has no text; only the file description body — swap
+      // the display name.
+      updated = m.copyWith(name: newBody, updatedAt: now);
+    default:
+      return;
+  }
+  await controller.updateMessage(old, updated);
+}
+
+Map<String, List<String>> _reactionsOf(Message m) => switch (m) {
+  TextMessage m => Map.of(m.reactions ?? const {}),
+  ImageMessage m => Map.of(m.reactions ?? const {}),
+  FileMessage m => Map.of(m.reactions ?? const {}),
+  _ => <String, List<String>>{},
+};
 
 void _registerAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
   _appenders.putIfAbsent(threadKey, () => []).add(fn);

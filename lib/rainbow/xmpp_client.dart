@@ -28,6 +28,7 @@ class XmppChatMessage extends XmppEvent {
     required this.stanzaId,
     required this.isGroupChat,
     this.attachment,
+    this.replyToStanzaId,
   });
   final String from;
   final String to;
@@ -35,6 +36,7 @@ class XmppChatMessage extends XmppEvent {
   final String stanzaId;
   final bool isGroupChat;
   final XmppAttachment? attachment;
+  final String? replyToStanzaId;
 }
 
 class XmppMamMessage extends XmppEvent {
@@ -46,6 +48,7 @@ class XmppMamMessage extends XmppEvent {
     required this.sentAt,
     required this.isGroupChat,
     this.attachment,
+    this.replyToStanzaId,
   });
   final String from;
   final String to;
@@ -54,6 +57,7 @@ class XmppMamMessage extends XmppEvent {
   final DateTime sentAt;
   final bool isGroupChat;
   final XmppAttachment? attachment;
+  final String? replyToStanzaId;
 }
 
 /// File payload attached to an XMPP message via the `urn:rainbow:file:1`
@@ -104,6 +108,37 @@ class XmppChatState extends XmppEvent {
   const XmppChatState({required this.fromBare, required this.state});
   final String fromBare;
   final String state;
+}
+
+/// XEP-0444 reactions — the SENDER's *full* current reaction set on
+/// [targetStanzaId]. Empty [emojis] means "cleared".
+class XmppReactions extends XmppEvent {
+  const XmppReactions({
+    required this.fromBare,
+    required this.targetStanzaId,
+    required this.emojis,
+  });
+  final String fromBare;
+  final String targetStanzaId;
+  final List<String> emojis;
+}
+
+/// XEP-0308 last-message correction — [originalStanzaId] should be
+/// replaced by a new message with body [newBody]. Carries the
+/// correction stanza's own [newStanzaId] so downstream state can dedupe.
+class XmppMessageCorrection extends XmppEvent {
+  const XmppMessageCorrection({
+    required this.fromBare,
+    required this.originalStanzaId,
+    required this.newBody,
+    required this.newStanzaId,
+    required this.isGroupChat,
+  });
+  final String fromBare;
+  final String originalStanzaId;
+  final String newBody;
+  final String newStanzaId;
+  final bool isGroupChat;
 }
 
 class RainbowXmppClient {
@@ -276,11 +311,50 @@ class RainbowXmppClient {
       }
     }
 
+    // XEP-0444 reactions — has no body, target is the reactions@id
+    // attribute; emojis are inner <reaction>text</reaction> children.
+    final reactionsEl = el.getElement('reactions');
+    if (reactionsEl != null && _hasXmlns(reactionsEl, 'urn:xmpp:reactions:0')) {
+      final targetId = reactionsEl.getAttribute('id') ?? '';
+      final emojis = reactionsEl.childElements
+          .where((c) => c.localName == 'reaction')
+          .map((c) => c.innerText)
+          .where((s) => s.isNotEmpty)
+          .toList();
+      _events.add(
+        XmppReactions(
+          fromBare: fromBare,
+          targetStanzaId: targetId,
+          emojis: emojis,
+        ),
+      );
+      return;
+    }
+
     final body = el.getElement('body')?.innerText;
     if (body == null) return;
     final to = el.getAttribute('to') ?? '';
     final id = el.getAttribute('id') ?? '';
     final type = el.getAttribute('type');
+
+    // XEP-0308 message correction — has a body + a <replace id="original"/>
+    // sibling. Emit as a correction event and swallow the message so
+    // consumers don't render it as a fresh reply.
+    final replaceEl = el.getElement('replace');
+    if (replaceEl != null &&
+        _hasXmlns(replaceEl, 'urn:xmpp:message-correct:0')) {
+      _events.add(
+        XmppMessageCorrection(
+          fromBare: fromBare,
+          originalStanzaId: replaceEl.getAttribute('id') ?? '',
+          newBody: body,
+          newStanzaId: id,
+          isGroupChat: type == 'groupchat',
+        ),
+      );
+      return;
+    }
+
     _events.add(
       XmppChatMessage(
         from: from,
@@ -289,8 +363,20 @@ class RainbowXmppClient {
         stanzaId: id,
         isGroupChat: type == 'groupchat',
         attachment: _readAttachment(el),
+        replyToStanzaId: _readReplyTargetId(el),
       ),
     );
+  }
+
+  /// Returns the target stanza id of an XEP-0461 `<reply id="..."/>`
+  /// child, or null if no reply reference is present.
+  static String? _readReplyTargetId(XmlElement message) {
+    for (final child in message.childElements) {
+      if (child.localName == 'reply' && _hasXmlns(child, 'urn:xmpp:reply:0')) {
+        return child.getAttribute('id');
+      }
+    }
+    return null;
   }
 
   static XmppAttachment? _readAttachment(XmlElement message) {
@@ -339,6 +425,7 @@ class RainbowXmppClient {
       sentAt: sentAt,
       isGroupChat: inner.getAttribute('type') == 'groupchat',
       attachment: _readAttachment(inner),
+      replyToStanzaId: _readReplyTargetId(inner),
     );
     _events.add(ev);
   }
@@ -361,6 +448,7 @@ class RainbowXmppClient {
     required String body,
     String? id,
     XmppAttachment? attachment,
+    String? replyToStanzaId,
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
@@ -368,6 +456,7 @@ class RainbowXmppClient {
       '<message id="$stanzaId" to="$toBareJid" type="chat">'
       '<body>${_esc(body)}</body>'
       '${_renderFile(attachment)}'
+      '${_renderReply(replyToStanzaId)}'
       '<request xmlns="urn:xmpp:receipts"/>'
       '<markable xmlns="urn:xmpp:chat-markers:0"/>'
       '</message>',
@@ -379,6 +468,7 @@ class RainbowXmppClient {
     required String body,
     String? id,
     XmppAttachment? attachment,
+    String? replyToStanzaId,
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
@@ -386,6 +476,7 @@ class RainbowXmppClient {
       '<message id="$stanzaId" to="$roomJid" type="groupchat">'
       '<body>${_esc(body)}</body>'
       '${_renderFile(attachment)}'
+      '${_renderReply(replyToStanzaId)}'
       '</message>',
     );
   }
@@ -400,8 +491,57 @@ class RainbowXmppClient {
         'size="${f.size}"/>';
   }
 
+  static String _renderReply(String? replyToStanzaId) {
+    if (replyToStanzaId == null || replyToStanzaId.isEmpty) return '';
+    return '<reply xmlns="urn:xmpp:reply:0" id="${_esc(replyToStanzaId)}"/>';
+  }
+
   void joinMuc(String roomJid, String nick) {
     _channel?.sink.add('<presence to="$roomJid/$nick"/>');
+  }
+
+  /// XEP-0444 reactions — an idempotent snapshot of the sender's current
+  /// reactions on [targetStanzaId]. Pass an empty list to clear.
+  void sendReactions({
+    required String toBareJid,
+    required String targetStanzaId,
+    required List<String> emojis,
+    bool isGroupChat = false,
+  }) {
+    final buf = StringBuffer()
+      ..write('<message to="${_esc(toBareJid)}"')
+      ..write(isGroupChat ? ' type="groupchat">' : ' type="chat">')
+      ..write(
+        '<reactions xmlns="urn:xmpp:reactions:0" '
+        'id="${_esc(targetStanzaId)}">',
+      );
+    for (final e in emojis) {
+      buf.write('<reaction>${_esc(e)}</reaction>');
+    }
+    buf.write('</reactions></message>');
+    _channel?.sink.add(buf.toString());
+  }
+
+  /// XEP-0308 last-message correction — publishes a NEW stanza that
+  /// carries the corrected body and refers to the [originalStanzaId] via
+  /// `<replace/>`.
+  void sendChatCorrection({
+    required String toBareJid,
+    required String originalStanzaId,
+    required String newBody,
+    String? id,
+    bool isGroupChat = false,
+  }) {
+    final stanzaId =
+        id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    _channel?.sink.add(
+      '<message id="$stanzaId" to="${_esc(toBareJid)}"'
+      ' type="${isGroupChat ? 'groupchat' : 'chat'}">'
+      '<body>${_esc(newBody)}</body>'
+      '<replace xmlns="urn:xmpp:message-correct:0"'
+      ' id="${_esc(originalStanzaId)}"/>'
+      '</message>',
+    );
   }
 
   /// XEP-0184 delivery receipt — tells [toBareJid] we received their
