@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:meta/meta.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:xml/xml.dart';
@@ -198,6 +199,19 @@ class RainbowXmppClient {
     if (_smEnabled) _hOut++;
     _channel?.sink.add(stanza);
   }
+
+  // Testing hooks: enable the SM state machine without a real WebSocket
+  // handshake and inject inbound stanzas to drive `_routeStanza`.
+  @visibleForTesting
+  void debugEnableSm() => _smEnabled = true;
+  @visibleForTesting
+  int get debugHOut => _hOut;
+  @visibleForTesting
+  int get debugHIn => _hIn;
+  @visibleForTesting
+  int get debugPendingAckCount => _pendingAcks.length;
+  @visibleForTesting
+  void debugRouteStanza(XmlElement el) => _routeStanza(el);
 
   Future<void> connect({
     required String email,
