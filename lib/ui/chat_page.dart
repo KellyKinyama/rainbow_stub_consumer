@@ -209,61 +209,64 @@ class ChatPage extends RearchConsumer {
                 builders: Builders(
                   composerBuilder: (ctx) =>
                       Composer(textEditingController: input),
-                textMessageBuilder:
-                    (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                        wrapChatBubble(
-                          message: msg,
-                          isSentByMe: isSentByMe,
-                          currentUserId: currentUserId,
-                          replyTarget: lookupTarget(msg.replyToMessageId),
-                          reactions: msg.reactions,
-                          onReactionTap: (e) => toggleMyReaction(msg, e),
-                          child: SimpleTextMessage(message: msg, index: index),
-                        ),
-                imageMessageBuilder:
-                    (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                        wrapChatBubble(
-                          message: msg,
-                          isSentByMe: isSentByMe,
-                          currentUserId: currentUserId,
-                          replyTarget: lookupTarget(msg.replyToMessageId),
-                          reactions: msg.reactions,
-                          onReactionTap: (e) => toggleMyReaction(msg, e),
-                          child: InlineImageBubble(
+                  textMessageBuilder:
+                      (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                          wrapChatBubble(
                             message: msg,
                             isSentByMe: isSentByMe,
+                            currentUserId: currentUserId,
+                            replyTarget: lookupTarget(msg.replyToMessageId),
+                            reactions: msg.reactions,
+                            onReactionTap: (e) => toggleMyReaction(msg, e),
+                            child: SimpleTextMessage(
+                              message: msg,
+                              index: index,
+                            ),
                           ),
-                        ),
-              ),
-              onAttachmentTap: () async {
-                final picked = await showAttachmentPicker(context);
-                if (picked == null) return;
-                await actions.sendPeerFile(
-                  peer,
-                  bytes: picked.bytes,
-                  fileName: picked.fileName,
-                  mimeType: picked.mimeType,
-                );
-              },
-              onMessageLongPress: onLongPress,
-              onMessageSend: (text) {
-                final trimmed = text.trim();
-                if (trimmed.isEmpty) return;
-                if (editing != null) {
-                  actions.editPeer(
+                  imageMessageBuilder:
+                      (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                          wrapChatBubble(
+                            message: msg,
+                            isSentByMe: isSentByMe,
+                            currentUserId: currentUserId,
+                            replyTarget: lookupTarget(msg.replyToMessageId),
+                            reactions: msg.reactions,
+                            onReactionTap: (e) => toggleMyReaction(msg, e),
+                            child: InlineImageBubble(
+                              message: msg,
+                              isSentByMe: isSentByMe,
+                            ),
+                          ),
+                ),
+                onAttachmentTap: () async {
+                  final picked = await showAttachmentPicker(context);
+                  if (picked == null) return;
+                  await actions.sendPeerFile(
                     peer,
-                    originalStanzaId: editing.id,
-                    newBody: trimmed,
+                    bytes: picked.bytes,
+                    fileName: picked.fileName,
+                    mimeType: picked.mimeType,
                   );
-                } else {
-                  actions.sendPeer(
-                    peer,
-                    trimmed,
-                    replyToStanzaId: replyingTo?.id,
-                  );
-                }
-                clearBanner();
-              },
+                },
+                onMessageLongPress: onLongPress,
+                onMessageSend: (text) {
+                  final trimmed = text.trim();
+                  if (trimmed.isEmpty) return;
+                  if (editing != null) {
+                    actions.editPeer(
+                      peer,
+                      originalStanzaId: editing.id,
+                      newBody: trimmed,
+                    );
+                  } else {
+                    actions.sendPeer(
+                      peer,
+                      trimmed,
+                      replyToStanzaId: replyingTo?.id,
+                    );
+                  }
+                  clearBanner();
+                },
               ),
             ),
           ),
