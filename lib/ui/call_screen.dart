@@ -146,6 +146,20 @@ class _RemoteVideoState extends State<_RemoteVideo> {
     if (_boundStream == null || !widget.call.hasVideo) {
       return _AudioAvatar(call: widget.call);
     }
+    // Remote peer degraded to audio-only (their camera failed or they
+    // explicitly disabled it). Show a camera-off placeholder so the
+    // caller sees why there's no picture.
+    if (_boundStream!.getVideoTracks().isEmpty) {
+      return Container(
+        color: Colors.black,
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.videocam_off,
+          color: Colors.white54,
+          size: 96,
+        ),
+      );
+    }
     return RTCVideoView(
       _renderer,
       objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
@@ -195,6 +209,23 @@ class _LocalVideoPreviewState extends State<_LocalVideoPreview> {
   @override
   Widget build(BuildContext context) {
     if (_boundStream == null) return const SizedBox.shrink();
+    // Camera busy / denied / degraded → the stream carries only audio.
+    // Render a black tile with a camera-off badge so the caller still
+    // sees the preview slot instead of nothing.
+    if (_boundStream!.getVideoTracks().isEmpty) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.videocam_off,
+            color: Colors.white54,
+            size: 32,
+          ),
+        ),
+      );
+    }
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: RTCVideoView(

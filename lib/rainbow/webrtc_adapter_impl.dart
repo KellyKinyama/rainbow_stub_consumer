@@ -144,17 +144,28 @@ class _FlutterWebRtcSession implements RtcSession {
     required bool video,
   }) async {
     if (_localStream != null) return;
-    _localStream = await rtc.navigator.mediaDevices.getUserMedia({
-      'audio': audio,
-      'video': video
-          ? {
-              'facingMode': 'user',
-              'width': {'ideal': 640},
-              'height': {'ideal': 480},
-              'frameRate': {'ideal': 24},
-            }
-          : false,
-    });
+    try {
+      _localStream = await rtc.navigator.mediaDevices.getUserMedia({
+        'audio': audio,
+        'video': video
+            ? {
+                'facingMode': 'user',
+                'width': {'ideal': 640},
+                'height': {'ideal': 480},
+                'frameRate': {'ideal': 24},
+              }
+            : false,
+      });
+    } on Object catch (_) {
+      // Camera busy / denied / missing. Fall back to audio-only so the
+      // call still connects — the local preview UI will render a
+      // camera-off tile when no video track is present.
+      if (!video || !audio) rethrow;
+      _localStream = await rtc.navigator.mediaDevices.getUserMedia({
+        'audio': true,
+        'video': false,
+      });
+    }
     for (final track in _localStream!.getTracks()) {
       await pc.addTrack(track, _localStream!);
     }
