@@ -10,14 +10,14 @@ import 'xmpp_capsule.dart';
 /// on the XMPP stream. Rebuilds every time the map changes.
 Map<String, Presence> presenceCapsule(CapsuleHandle use) {
   final events = use(xmppEventsCapsule);
-  final slot = use.data<Map<String, Presence>>(const {});
+  final slot = use.data<Map<String, Presence>>(const <String, Presence>{});
 
   use.effect(() {
     final StreamSubscription<XmppPresenceUpdate> sub = events
         .where((e) => e is XmppPresenceUpdate)
         .cast<XmppPresenceUpdate>()
         .listen((e) {
-          slot.value = {
+          slot.value = <String, Presence>{
             ...slot.value,
             e.fromBare: Presence(show: e.show, status: e.status),
           };

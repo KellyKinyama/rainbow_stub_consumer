@@ -99,13 +99,13 @@ Capsule<List<ChatMessage>> messagesCapsule(ThreadKey threadKey) {
     List<ChatMessage> capsule(CapsuleHandle use) {
       final events = use(xmppEventsCapsule);
       final myUserId = use(authCapsule).me?.id;
-      final slot = use.data<List<ChatMessage>>(const []);
+      final slot = use.data<List<ChatMessage>>(const <ChatMessage>[]);
 
       use.effect(() {
         void append(ChatMessage m) {
           if (myGeneration != _cacheGeneration) return;
           if (slot.value.any((existing) => existing.id == m.id)) return;
-          slot.value = [...slot.value, m];
+          slot.value = <ChatMessage>[...slot.value, m];
         }
 
         _registerAppender(threadKey, append);

@@ -94,6 +94,37 @@ class _FlutterWebRtcSession implements RtcSession {
       }
     };
 
+    // Some browsers / plugin versions fire `onIceConnectionState`
+    // reliably but not `onConnectionState` on the answerer. Mirror the
+    // ICE state as a fallback — `_emit` short-circuits when the state
+    // doesn't actually change so this is safe to overlap with the
+    // primary hook.
+    pc.onIceConnectionState = (s) {
+      switch (s) {
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateChecking:
+          if (_state == CallState.ringing || _state == CallState.dialing) {
+            _emit(const RtcStateChanged(CallState.connecting));
+          }
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateConnected:
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateCompleted:
+          if (_state != CallState.connected) {
+            _emit(const RtcStateChanged(CallState.connected));
+          }
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateFailed:
+          if (_state != CallState.failed) {
+            _emit(const RtcStateChanged(CallState.failed));
+          }
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateDisconnected:
+          if (_state == CallState.connected) {
+            _emit(const RtcStateChanged(CallState.disconnected));
+          }
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateClosed:
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateNew:
+        case rtc.RTCIceConnectionState.RTCIceConnectionStateCount:
+          break;
+      }
+    };
+
     pc.onTrack = (event) {
       final stream = event.streams.firstOrNull;
       if (stream == null) return;

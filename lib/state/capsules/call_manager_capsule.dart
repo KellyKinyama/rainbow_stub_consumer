@@ -264,6 +264,10 @@ class CallManager extends ChangeNotifier {
             sdpMLineIndex: e.sdpMLineIndex,
           ),
         );
+      } else if (e is RtcRemoteTrackAdded || e is RtcLocalMediaReady) {
+        // Nudge listeners so CallScreen's video / audio renderers can
+        // rebind srcObject to the newly-available stream.
+        notifyListeners();
       }
     });
   }

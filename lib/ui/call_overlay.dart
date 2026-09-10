@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
 
+import '../app.dart' show rootNavigatorKey;
 import '../rainbow/webrtc_adapter.dart';
 import '../state/capsules/call_manager_capsule.dart';
 import 'call_screen.dart';
@@ -25,8 +26,10 @@ class CallOverlay extends RearchConsumer {
         if (call == null) return const SizedBox.shrink();
         if (call.state == CallState.connected) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!_screenOpen(context, call.sid)) {
-              Navigator.of(context).push(
+            final nav = rootNavigatorKey.currentState;
+            if (nav == null) return;
+            if (!_screenOpen(nav, call.sid)) {
+              nav.push(
                 MaterialPageRoute(
                   builder: (_) => CallScreen(sid: call.sid),
                   settings: RouteSettings(name: 'call:${call.sid}'),
@@ -45,9 +48,9 @@ class CallOverlay extends RearchConsumer {
     );
   }
 
-  bool _screenOpen(BuildContext ctx, String sid) {
+  bool _screenOpen(NavigatorState nav, String sid) {
     var open = false;
-    Navigator.of(ctx).popUntil((route) {
+    nav.popUntil((route) {
       if (route.settings.name == 'call:$sid') open = true;
       return true;
     });

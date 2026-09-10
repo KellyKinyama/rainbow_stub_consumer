@@ -11,6 +11,11 @@ import 'ui/diagnostics_overlay.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
 
+/// Root navigator handle. Handed to [MaterialApp.navigatorKey] so
+/// widgets that sit above the Navigator (the incoming-call overlay
+/// inside `MaterialApp.builder`) can still push routes onto it.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 class RainbowConsumerApp extends StatelessWidget {
   const RainbowConsumerApp({super.key});
 
@@ -18,6 +23,7 @@ class RainbowConsumerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Rainbow Stub Consumer',
+      navigatorKey: rootNavigatorKey,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0086CF)),
         useMaterial3: true,
