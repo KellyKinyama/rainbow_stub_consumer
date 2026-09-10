@@ -134,7 +134,8 @@ class JsonRpcSfuSignaling implements SfuSignaling {
       return;
     }
     // Response to one of our calls.
-    if (msg.containsKey('id') && (msg.containsKey('result') || msg.containsKey('error'))) {
+    if (msg.containsKey('id') &&
+        (msg.containsKey('result') || msg.containsKey('error'))) {
       final id = (msg['id'] as num).toInt();
       final completer = _pending.remove(id);
       if (completer == null) return;
@@ -210,7 +211,10 @@ class JsonRpcSfuSignaling implements SfuSignaling {
   }
 
   @override
-  Future<String> sendOffer({required String sid, required String offerSdp}) async {
+  Future<String> sendOffer({
+    required String sid,
+    required String offerSdp,
+  }) async {
     final result = await _call('offer', {
       'sid': sid,
       'desc': {'type': 'offer', 'sdp': offerSdp},
@@ -224,7 +228,10 @@ class JsonRpcSfuSignaling implements SfuSignaling {
   }
 
   @override
-  Future<void> sendAnswer({required String sid, required String answerSdp}) async {
+  Future<void> sendAnswer({
+    required String sid,
+    required String answerSdp,
+  }) async {
     _notify('answer', {
       'sid': sid,
       'desc': {'type': 'answer', 'sdp': answerSdp},
@@ -257,11 +264,13 @@ class JsonRpcSfuSignaling implements SfuSignaling {
     // remote peer's ack; don't block the caller on that. Fire-and-
     // forget is fine because we've already cancelled our reader and
     // told local callers we're closed.
-    unawaited(Future(() async {
-      try {
-        await _channel.sink.close();
-      } catch (_) {}
-    }));
+    unawaited(
+      Future(() async {
+        try {
+          await _channel.sink.close();
+        } catch (_) {}
+      }),
+    );
     if (!_messages.isClosed) await _messages.close();
   }
 }

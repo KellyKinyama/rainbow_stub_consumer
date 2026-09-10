@@ -41,30 +41,27 @@ void main() {
     },
   );
 
-  test(
-    'inbound <call state="ended"/> also surfaces',
-    () async {
-      final c = _makeClient();
-      final markers = <XmppMucCallMarker>[];
-      final sub = c.events.listen((e) {
-        if (e is XmppMucCallMarker) markers.add(e);
-      });
+  test('inbound <call state="ended"/> also surfaces', () async {
+    final c = _makeClient();
+    final markers = <XmppMucCallMarker>[];
+    final sub = c.events.listen((e) {
+      if (e is XmppMucCallMarker) markers.add(e);
+    });
 
-      c.debugRouteStanza(
-        _parse(
-          '<message type="groupchat" '
-          'from="room1@muc.localhost/alice">'
-          '<call xmlns="urn:rainbow:muc-call:1" '
-          'state="ended" sid="sfu-sid-1"/>'
-          '</message>',
-        ),
-      );
+    c.debugRouteStanza(
+      _parse(
+        '<message type="groupchat" '
+        'from="room1@muc.localhost/alice">'
+        '<call xmlns="urn:rainbow:muc-call:1" '
+        'state="ended" sid="sfu-sid-1"/>'
+        '</message>',
+      ),
+    );
 
-      await Future<void>.delayed(Duration.zero);
-      expect(markers.single.state, 'ended');
-      await sub.cancel();
-    },
-  );
+    await Future<void>.delayed(Duration.zero);
+    expect(markers.single.state, 'ended');
+    await sub.cancel();
+  });
 
   test('non-muc-call message does not fire the marker', () async {
     final c = _makeClient();

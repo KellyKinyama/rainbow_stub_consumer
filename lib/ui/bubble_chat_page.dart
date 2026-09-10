@@ -13,6 +13,7 @@ import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
+import 'group_call_banner.dart';
 
 class BubbleChatPage extends RearchConsumer {
   const BubbleChatPage({super.key, required this.bubble});
@@ -158,6 +159,7 @@ class BubbleChatPage extends RearchConsumer {
       ),
       body: Column(
         children: [
+          GroupCallBanner(bubble: bubble),
           ListenableBuilder(
             listenable: mamPageStateOf(threadKey),
             builder: (ctx, _) {
