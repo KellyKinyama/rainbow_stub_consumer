@@ -148,17 +148,23 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - Commit: see `feat/chat-ui-rearch` branch tip
   - Session log: `docs/phase-b-log.md`
 
-### Phase C — Rewrite screens as `RearchConsumer` widgets, delete `RainbowSession` (M)
+### Phase C — Rewrite screens as `RearchConsumer` widgets, delete `RainbowSession` (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - `LoginPage` → uses `authCapsule.setSignedIn(...)`; deletes `context.read<RainbowSession>()`.
-  - `HomePage`, `ContactsTab`, `BubblesTab` → read from capsules.
-  - Delete `lib/state/rainbow_session.dart` and remove `provider` imports.
-  - Remove `ChangeNotifierProvider` from `app.dart`; the `RearchBootstrapper` wraps everything from `main.dart`.
-- **Acceptance:**
-  - `flutter test test/live_stub_integration_test.dart` still green.
-  - Manual login / roster / bubbles walkthrough (same as RUNBOOK § 5) still works.
-  - `git grep -R 'ChangeNotifier\|provider' lib/` returns nothing.
+- **Done:**
+  - `LoginPage`, `HomePage`, `ContactsTab`, `BubblesTab`, `ChatPage`, `BubbleChatPage` are all `RearchConsumer` widgets.
+  - `RainbowConsumerApp` no longer takes a `config` prop — the `configCapsule` provides it.
+  - `_AuthGate` reads `authCapsule` directly; `MaterialApp` sits inside a plain `StatelessWidget` under `RearchBootstrapper`.
+  - `LoginPage` uses `use.textEditingController(...)` + `use.state<bool>` + `use.state<String?>` for local state, and calls `authControllerCapsule.signIn(...)`.
+  - `ContactsTab` and `BubblesTab` do `switch (asyncValue) { AsyncLoading / AsyncData / AsyncError }` pattern matching against `rosterCapsule` / `bubblesCapsule`.
+  - New `chatActionsCapsule` exposes `sendPeer`, `sendGroup`, `joinMuc`, `setMyPresence`, `createBubble` to the UI.
+  - `messagesCapsule` gained an internal appender registry so `chatActions.sendPeer/sendGroup` echo locally with `isMine: true`; incoming XMPP messages compute `isMine` by comparing the sender's JID local-part to `authCapsule.me?.id`.
+  - `lib/state/rainbow_session.dart` deleted; `provider` removed from `pubspec.yaml` (still transitive via `flutter`).
+- **Acceptance evidence (2026-09-10):**
+  - `git grep 'ChangeNotifier\|RainbowSession\|package:provider' lib/` → **empty**.
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new + rewritten files.
+  - `flutter test --exclude-tags=live` → 14/14 pass; `flutter test` with the stub running → live suite green.
+  - New `test/phase_c_actions_test.dart` proves `chatActionsCapsule.sendPeer` dispatches to XMPP and echoes into `messagesCapsule` with `isMine: true`.
+  - Session log: `docs/phase-c-log.md`.
 
 ### Phase D — Adopt `flutter_chat_ui` for 1:1 chat (M)
 

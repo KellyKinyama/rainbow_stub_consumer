@@ -111,19 +111,22 @@ void main() {
     await fakeXmpp.dispose();
   });
 
-  test('auth capsule starts SignedOut, transitions to SignedIn on signIn', () async {
-    expect(container.read(authCapsule), isA<SignedOut>());
+  test(
+    'auth capsule starts SignedOut, transitions to SignedIn on signIn',
+    () async {
+      expect(container.read(authCapsule), isA<SignedOut>());
 
-    final controller = container.read(authControllerCapsule);
-    await controller.signIn('alice@rainbow-stub.local', 'pw');
+      final controller = container.read(authControllerCapsule);
+      await controller.signIn('alice@rainbow-stub.local', 'pw');
 
-    final after = container.read(authCapsule);
-    expect(after, isA<SignedIn>());
-    expect(after.me?.loginEmail, 'alice@rainbow-stub.local');
-    expect(after.token, 'tkn-1');
-    expect(fakeRest.loginCalls, 1);
-    expect(fakeXmpp.connectCalls, 1);
-  });
+      final after = container.read(authCapsule);
+      expect(after, isA<SignedIn>());
+      expect(after.me?.loginEmail, 'alice@rainbow-stub.local');
+      expect(after.token, 'tkn-1');
+      expect(fakeRest.loginCalls, 1);
+      expect(fakeXmpp.connectCalls, 1);
+    },
+  );
 
   test('signOut resets state and calls disconnect + logout', () async {
     final controller = container.read(authControllerCapsule);
@@ -182,80 +185,86 @@ void main() {
     fail('bubblesCapsule never produced AsyncData with entries');
   });
 
-  test('presenceCapsule accumulates presence updates from the XMPP stream', () async {
-    // Prime the capsule so the effect subscribes.
-    expect(container.read(presenceCapsule), isEmpty);
+  test(
+    'presenceCapsule accumulates presence updates from the XMPP stream',
+    () async {
+      // Prime the capsule so the effect subscribes.
+      expect(container.read(presenceCapsule), isEmpty);
 
-    fakeXmpp.push(
-      const XmppPresenceUpdate(fromBare: 'bob@localhost', show: 'away'),
-    );
-    fakeXmpp.push(
-      const XmppPresenceUpdate(
-        fromBare: 'bob@localhost',
-        show: 'chat',
-        status: 'hi',
-      ),
-    );
-    fakeXmpp.push(
-      const XmppPresenceUpdate(fromBare: 'carol@localhost', show: 'dnd'),
-    );
+      fakeXmpp.push(
+        const XmppPresenceUpdate(fromBare: 'bob@localhost', show: 'away'),
+      );
+      fakeXmpp.push(
+        const XmppPresenceUpdate(
+          fromBare: 'bob@localhost',
+          show: 'chat',
+          status: 'hi',
+        ),
+      );
+      fakeXmpp.push(
+        const XmppPresenceUpdate(fromBare: 'carol@localhost', show: 'dnd'),
+      );
 
-    // Let the stream deliver + rearch rebuild.
-    for (var i = 0; i < 20; i++) {
-      final m = container.read(presenceCapsule);
-      if (m.length == 2 && m['bob@localhost']?.show == 'chat') {
-        expect(m['bob@localhost']?.status, 'hi');
-        expect(m['carol@localhost']?.show, 'dnd');
-        return;
+      // Let the stream deliver + rearch rebuild.
+      for (var i = 0; i < 20; i++) {
+        final m = container.read(presenceCapsule);
+        if (m.length == 2 && m['bob@localhost']?.show == 'chat') {
+          expect(m['bob@localhost']?.status, 'hi');
+          expect(m['carol@localhost']?.show, 'dnd');
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
       }
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    fail('presenceCapsule never reached the expected state');
-  });
+      fail('presenceCapsule never reached the expected state');
+    },
+  );
 
-  test('messagesCapsule(threadKey) appends only messages for that thread', () async {
-    final thread = 'bob@localhost';
-    final capsule = messagesCapsule(thread);
-    // Prime — first read subscribes the effect.
-    expect(container.read(capsule), isEmpty);
+  test(
+    'messagesCapsule(threadKey) appends only messages for that thread',
+    () async {
+      final thread = 'bob@localhost';
+      final capsule = messagesCapsule(thread);
+      // Prime — first read subscribes the effect.
+      expect(container.read(capsule), isEmpty);
 
-    fakeXmpp.push(
-      const XmppChatMessage(
-        from: 'bob@localhost/laptop',
-        to: 'alice@localhost/flutter',
-        body: 'hey',
-        stanzaId: 'm1',
-        isGroupChat: false,
-      ),
-    );
-    // Off-thread — must NOT be appended.
-    fakeXmpp.push(
-      const XmppChatMessage(
-        from: 'carol@localhost/laptop',
-        to: 'alice@localhost/flutter',
-        body: 'unrelated',
-        stanzaId: 'm2',
-        isGroupChat: false,
-      ),
-    );
-    fakeXmpp.push(
-      const XmppChatMessage(
-        from: 'alice@localhost/flutter',
-        to: 'bob@localhost/laptop',
-        body: 'yo',
-        stanzaId: 'm3',
-        isGroupChat: false,
-      ),
-    );
+      fakeXmpp.push(
+        const XmppChatMessage(
+          from: 'bob@localhost/laptop',
+          to: 'alice@localhost/flutter',
+          body: 'hey',
+          stanzaId: 'm1',
+          isGroupChat: false,
+        ),
+      );
+      // Off-thread — must NOT be appended.
+      fakeXmpp.push(
+        const XmppChatMessage(
+          from: 'carol@localhost/laptop',
+          to: 'alice@localhost/flutter',
+          body: 'unrelated',
+          stanzaId: 'm2',
+          isGroupChat: false,
+        ),
+      );
+      fakeXmpp.push(
+        const XmppChatMessage(
+          from: 'alice@localhost/flutter',
+          to: 'bob@localhost/laptop',
+          body: 'yo',
+          stanzaId: 'm3',
+          isGroupChat: false,
+        ),
+      );
 
-    for (var i = 0; i < 20; i++) {
-      final ms = container.read(capsule);
-      if (ms.length == 2) {
-        expect(ms.map((m) => m.body).toList(), ['hey', 'yo']);
-        return;
+      for (var i = 0; i < 20; i++) {
+        final ms = container.read(capsule);
+        if (ms.length == 2) {
+          expect(ms.map((m) => m.body).toList(), ['hey', 'yo']);
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
       }
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    fail('messagesCapsule never accumulated the expected pair');
-  });
+      fail('messagesCapsule never accumulated the expected pair');
+    },
+  );
 }

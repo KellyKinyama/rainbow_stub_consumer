@@ -1,26 +1,28 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_rearch/flutter_rearch.dart';
+import 'package:rearch/rearch.dart';
 
-import '../state/rainbow_session.dart';
+import '../state/capsules/auth_controller_capsule.dart';
+import '../state/capsules/auth_state_capsule.dart';
+import '../state/capsules/chat_actions_capsule.dart';
 import 'bubbles_tab.dart';
 import 'contacts_tab.dart';
 
-class HomePage extends StatefulWidget {
+class HomePage extends RearchConsumer {
   const HomePage({super.key});
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  int _tab = 0;
 
   @override
-  Widget build(BuildContext context) {
-    final me = context.watch<RainbowSession>().me;
-    final pages = const [ContactsTab(), BubblesTab()];
+  Widget build(BuildContext context, WidgetHandle use) {
+    final auth = use(authControllerCapsule);
+    final actions = use(chatActionsCapsule);
+    final me = use(authCapsule).me;
+    final (tab, setTab) = use.state<int>(0);
+
+    const pages = [ContactsTab(), BubblesTab()];
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_tab == 0 ? 'Contacts' : 'Bubbles'),
+        title: Text(tab == 0 ? 'Contacts' : 'Bubbles'),
         actions: [
           PopupMenuButton<String>(
             icon: CircleAvatar(
@@ -31,14 +33,13 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             onSelected: (v) async {
-              final s = context.read<RainbowSession>();
               switch (v) {
                 case 'online':
                 case 'away':
                 case 'dnd':
-                  await s.setMyPresence(v);
+                  await actions.setMyPresence(v);
                 case 'signout':
-                  await s.signOut();
+                  await auth.signOut();
               }
             },
             itemBuilder: (_) => const [
@@ -54,10 +55,10 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: pages[_tab],
+      body: pages[tab],
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _tab,
-        onDestinationSelected: (i) => setState(() => _tab = i),
+        selectedIndex: tab,
+        onDestinationSelected: setTab,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.people_outline),

@@ -1,63 +1,55 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_rearch/flutter_rearch.dart';
+import 'package:rearch/rearch.dart';
 
 import '../rainbow/models.dart';
-import '../state/rainbow_session.dart';
+import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/config_capsule.dart';
+import '../state/capsules/messages_capsule.dart';
 
-class BubbleChatPage extends StatefulWidget {
+class BubbleChatPage extends RearchConsumer {
   const BubbleChatPage({super.key, required this.bubble});
   final RainbowBubble bubble;
-  @override
-  State<BubbleChatPage> createState() => _BubbleChatPageState();
-}
-
-class _BubbleChatPageState extends State<BubbleChatPage> {
-  final _controller = TextEditingController();
-  bool _joined = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _join());
-  }
+  Widget build(BuildContext context, WidgetHandle use) {
+    final config = use(configCapsule);
+    final actions = use(chatActionsCapsule);
+    final threadKey = '${bubble.id}@muc.${config.xmppDomain}';
+    final msgs = use(messagesCapsule(threadKey));
+    final input = use.textEditingController();
+    final (joined, setJoined) = use.state<bool>(false);
 
-  void _join() {
-    final s = context.read<RainbowSession>();
-    final room = '${widget.bubble.id}@muc.${s.config.xmppDomain}';
-    final nick = s.me?.id ?? 'me';
-    s.xmpp.joinMuc(room, nick);
-    setState(() => _joined = true);
-  }
+    // Join the MUC once on first build.
+    use.effect(() {
+      actions.joinMuc(bubble);
+      // schedule state flip after the current build completes.
+      WidgetsBinding.instance.addPostFrameCallback((_) => setJoined(true));
+      return null;
+    }, [bubble.id]);
 
-  String get _threadKey =>
-      '${widget.bubble.id}@muc.${context.read<RainbowSession>().config.xmppDomain}';
+    void send() {
+      final text = input.text.trim();
+      if (text.isEmpty) return;
+      actions.sendGroup(bubble, text);
+      input.clear();
+    }
 
-  void _send() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    context.read<RainbowSession>().sendGroupChatTo(widget.bubble, text);
-    _controller.clear();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final session = context.watch<RainbowSession>();
-    final msgs = session.thread(_threadKey);
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.bubble.name),
-            if (widget.bubble.topic != null)
-              Text(widget.bubble.topic!, style: const TextStyle(fontSize: 12)),
+            Text(bubble.name),
+            if (bubble.topic != null)
+              Text(bubble.topic!, style: const TextStyle(fontSize: 12)),
           ],
         ),
       ),
       body: Column(
         children: [
-          if (!_joined) const LinearProgressIndicator(),
+          if (!joined) const LinearProgressIndicator(),
           Expanded(
             child: ListView.builder(
               padding: const EdgeInsets.all(12),
@@ -113,17 +105,17 @@ class _BubbleChatPageState extends State<BubbleChatPage> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: _controller,
+                      controller: input,
                       decoration: const InputDecoration(
                         hintText: 'Send to room…',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
-                      onSubmitted: (_) => _send(),
+                      onSubmitted: (_) => send(),
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(icon: const Icon(Icons.send), onPressed: _send),
+                  IconButton(icon: const Icon(Icons.send), onPressed: send),
                 ],
               ),
             ),

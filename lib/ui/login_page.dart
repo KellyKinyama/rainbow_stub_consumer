@@ -1,39 +1,36 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_rearch/flutter_rearch.dart';
+import 'package:rearch/rearch.dart';
 
-import '../state/rainbow_session.dart';
+import '../state/capsules/auth_controller_capsule.dart';
+import '../state/capsules/config_capsule.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends RearchConsumer {
   const LoginPage({super.key});
+
   @override
-  State<LoginPage> createState() => _LoginPageState();
-}
+  Widget build(BuildContext context, WidgetHandle use) {
+    final auth = use(authControllerCapsule);
+    final config = use(configCapsule);
+    final email = use.textEditingController(
+      initialText: 'alice@rainbow-stub.local',
+    );
+    final password = use.textEditingController(initialText: 'password');
+    final (busy, setBusy) = use.state<bool>(false);
+    final (error, setError) = use.state<String?>(null);
 
-class _LoginPageState extends State<LoginPage> {
-  final _email = TextEditingController(text: 'alice@rainbow-stub.local');
-  final _password = TextEditingController(text: 'password');
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _submit() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await context.read<RainbowSession>().signIn(
-        _email.text.trim(),
-        _password.text,
-      );
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    Future<void> submit() async {
+      setBusy(true);
+      setError(null);
+      try {
+        await auth.signIn(email.text.trim(), password.text);
+      } catch (e) {
+        setError(e.toString());
+      } finally {
+        setBusy(false);
+      }
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
         child: ConstrainedBox(
@@ -51,7 +48,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 24),
                 TextField(
-                  controller: _email,
+                  controller: email,
                   keyboardType: TextInputType.emailAddress,
                   decoration: const InputDecoration(
                     labelText: 'Email',
@@ -60,24 +57,24 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 12),
                 TextField(
-                  controller: _password,
+                  controller: password,
                   obscureText: true,
                   decoration: const InputDecoration(
                     labelText: 'Password',
                     prefixIcon: Icon(Icons.lock),
                   ),
-                  onSubmitted: (_) => _submit(),
+                  onSubmitted: (_) => submit(),
                 ),
-                if (_error != null) ...[
+                if (error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Text(error, style: const TextStyle(color: Colors.red)),
                 ],
                 const SizedBox(height: 24),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy
+                    onPressed: busy ? null : submit,
+                    child: busy
                         ? const SizedBox(
                             height: 20,
                             width: 20,
@@ -88,7 +85,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Points at ${context.read<RainbowSession>().config.baseUrl}',
+                  'Points at ${config.baseUrl}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
