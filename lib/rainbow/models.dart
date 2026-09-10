@@ -120,6 +120,7 @@ class ChatMessage {
   final String? replyToStanzaId;
   final Map<String, List<String>>? reactions;
   final DateTime? editedAt;
+
   /// `true` while a locally-echoed message is awaiting the server
   /// sent-ack; consumed by `_toChatUiMessage` to render the "sending"
   /// status.

@@ -280,13 +280,12 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
             .listen((e) async {
               if (myGeneration != _cacheGeneration) return;
               final fromLocal = _localPart(e.fromBare);
-              final fromMatchesMe =
-                  myUserId != null && fromLocal == myUserId;
+              final fromMatchesMe = myUserId != null && fromLocal == myUserId;
               // For 1:1 accept retracts either from the peer OR my
               // own outgoing echo. For MUC accept anything on the thread.
               final belongs = e.isGroupChat
                   ? e.fromBare.contains('@muc.') &&
-                      _bareJid(e.fromBare) == threadKey
+                        _bareJid(e.fromBare) == threadKey
                   : (e.fromBare == threadKey || fromMatchesMe);
               if (!belongs) return;
               await _applyRetract(controller, e.targetStanzaId);
@@ -495,8 +494,9 @@ void resetMessagesCapsuleCache() {
 
 Message _toChatUiMessage(ChatMessage cm, String authorId) {
   final a = cm.attachment;
-  final MessageStatus? status =
-      cm.isMine && cm.pendingAck ? MessageStatus.sending : null;
+  final MessageStatus? status = cm.isMine && cm.pendingAck
+      ? MessageStatus.sending
+      : null;
   if (a != null && a.isImage) {
     return Message.image(
       id: cm.id,
@@ -683,9 +683,7 @@ Future<void> _stampSent(
   InMemoryChatController controller, {
   required String stanzaId,
 }) async {
-  final old = controller.messages
-      .where((m) => m.id == stanzaId)
-      .firstOrNull;
+  final old = controller.messages.where((m) => m.id == stanzaId).firstOrNull;
   if (old == null) return;
   final now = DateTime.now();
   final Message updated;

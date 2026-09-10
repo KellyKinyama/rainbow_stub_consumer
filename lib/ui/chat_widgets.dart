@@ -89,9 +89,7 @@ Future<MessageActionChoice?> showMessageActions(
               ),
               title: Text(
                 'Delete for everyone',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.error,
-                ),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
               onTap: () => Navigator.of(bs).pop('delete'),
             ),
@@ -124,9 +122,7 @@ Widget wrapChatBubble({
   required Widget child,
   required void Function(String emoji) onReactionTap,
 }) {
-  final align = isSentByMe
-      ? CrossAxisAlignment.end
-      : CrossAxisAlignment.start;
+  final align = isSentByMe ? CrossAxisAlignment.end : CrossAxisAlignment.start;
   return Column(
     crossAxisAlignment: align,
     mainAxisSize: MainAxisSize.min,
