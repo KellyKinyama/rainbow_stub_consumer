@@ -1,16 +1,18 @@
+import 'dart:io' show File, Platform;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:rearch/rearch.dart';
 
 import '../state/capsules/rest_capsule.dart';
 
-/// Bottom-sheet picker: currently only "File" is wired; camera/gallery
-/// are placeholders for a mobile follow-up. Returns picked bytes + name
-/// + mime, or `null` if the user dismissed.
+/// Bottom-sheet picker: "Camera" (mobile/web), "Image" (gallery), "File".
+/// Returns picked bytes + name + mime, or `null` if the user dismissed.
 class PickedAttachment {
   const PickedAttachment({
     required this.bytes,
@@ -23,6 +25,10 @@ class PickedAttachment {
   final String mimeType;
 }
 
+/// True on platforms where `image_picker` supports the camera source.
+bool get _cameraAvailable =>
+    kIsWeb || Platform.isAndroid || Platform.isIOS;
+
 Future<PickedAttachment?> showAttachmentPicker(BuildContext context) async {
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -31,6 +37,12 @@ Future<PickedAttachment?> showAttachmentPicker(BuildContext context) async {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (_cameraAvailable)
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Camera'),
+              onTap: () => Navigator.of(ctx).pop('camera'),
+            ),
           ListTile(
             leading: const Icon(Icons.image_outlined),
             title: const Text('Image'),
@@ -46,6 +58,20 @@ Future<PickedAttachment?> showAttachmentPicker(BuildContext context) async {
     ),
   );
   if (choice == null) return null;
+
+  if (choice == 'camera') {
+    final xf = await ImagePicker().pickImage(
+      source: ImageSource.camera,
+      imageQuality: 85,
+    );
+    if (xf == null) return null;
+    final bytes = kIsWeb ? await xf.readAsBytes() : await File(xf.path).readAsBytes();
+    return PickedAttachment(
+      bytes: bytes,
+      fileName: xf.name,
+      mimeType: xf.mimeType ?? _guessMime(xf.name, 'image'),
+    );
+  }
 
   final result = await FilePicker.platform.pickFiles(
     type: choice == 'image' ? FileType.image : FileType.any,

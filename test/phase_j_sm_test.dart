@@ -2,8 +2,6 @@
 // XmppClient side. The live integration test covers wire-level ack; this
 // suite exercises the pure state transitions offline via
 // `debug*` hooks on `RainbowXmppClient`.
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rainbow_stub_consumer/rainbow/xmpp_client.dart';
 import 'package:xml/xml.dart';
@@ -25,46 +23,50 @@ XmlElement _incomingChat({
 );
 
 void main() {
-  test('sendChat with SM enabled increments _hOut and queues pending ack',
-      () async {
-    final c = _makeClient()..debugEnableSm();
-    expect(c.debugHOut, 0);
-    expect(c.debugPendingAckCount, 0);
+  test(
+    'sendChat with SM enabled increments _hOut and queues pending ack',
+    () async {
+      final c = _makeClient()..debugEnableSm();
+      expect(c.debugHOut, 0);
+      expect(c.debugPendingAckCount, 0);
 
-    c.sendChat(toBareJid: 'bob@localhost', body: 'ping', id: 'stanza-1');
+      c.sendChat(toBareJid: 'bob@localhost', body: 'ping', id: 'stanza-1');
 
-    expect(c.debugHOut, 1);
-    expect(c.debugPendingAckCount, 1);
-  });
+      expect(c.debugHOut, 1);
+      expect(c.debugPendingAckCount, 1);
+    },
+  );
 
-  test('<a h=N/> drains pending entries with hOut <= N and emits XmppSentAck',
-      () async {
-    final c = _makeClient()..debugEnableSm();
-    final acks = <String>[];
-    final sub = c.events.listen((e) {
-      if (e is XmppSentAck) acks.add(e.stanzaId);
-    });
+  test(
+    '<a h=N/> drains pending entries with hOut <= N and emits XmppSentAck',
+    () async {
+      final c = _makeClient()..debugEnableSm();
+      final acks = <String>[];
+      final sub = c.events.listen((e) {
+        if (e is XmppSentAck) acks.add(e.stanzaId);
+      });
 
-    c.sendChat(toBareJid: 'bob@localhost', body: 'a', id: 'a1');
-    c.sendChat(toBareJid: 'bob@localhost', body: 'b', id: 'b2');
-    c.sendChat(toBareJid: 'bob@localhost', body: 'c', id: 'c3');
-    expect(c.debugPendingAckCount, 3);
+      c.sendChat(toBareJid: 'bob@localhost', body: 'a', id: 'a1');
+      c.sendChat(toBareJid: 'bob@localhost', body: 'b', id: 'b2');
+      c.sendChat(toBareJid: 'bob@localhost', body: 'c', id: 'c3');
+      expect(c.debugPendingAckCount, 3);
 
-    // Server has seen 2 of my 3 stanzas so far.
-    c.debugRouteStanza(_ack(2));
-    await Future<void>.delayed(Duration.zero);
+      // Server has seen 2 of my 3 stanzas so far.
+      c.debugRouteStanza(_ack(2));
+      await Future<void>.delayed(Duration.zero);
 
-    expect(acks, ['a1', 'b2']);
-    expect(c.debugPendingAckCount, 1);
+      expect(acks, ['a1', 'b2']);
+      expect(c.debugPendingAckCount, 1);
 
-    // Later ack catches the rest.
-    c.debugRouteStanza(_ack(3));
-    await Future<void>.delayed(Duration.zero);
-    expect(acks, ['a1', 'b2', 'c3']);
-    expect(c.debugPendingAckCount, 0);
+      // Later ack catches the rest.
+      c.debugRouteStanza(_ack(3));
+      await Future<void>.delayed(Duration.zero);
+      expect(acks, ['a1', 'b2', 'c3']);
+      expect(c.debugPendingAckCount, 0);
 
-    await sub.cancel();
-  });
+      await sub.cancel();
+    },
+  );
 
   test('<a h=N/> below the smallest pending hOut is a no-op', () async {
     final c = _makeClient()..debugEnableSm();
@@ -129,25 +131,27 @@ void main() {
     expect(c.debugPendingAckCount, 0);
   });
 
-  test('sendGroupChat also registers a pending ack when SM is enabled',
-      () async {
-    final c = _makeClient()..debugEnableSm();
-    final acks = <String>[];
-    final sub = c.events.listen((e) {
-      if (e is XmppSentAck) acks.add(e.stanzaId);
-    });
+  test(
+    'sendGroupChat also registers a pending ack when SM is enabled',
+    () async {
+      final c = _makeClient()..debugEnableSm();
+      final acks = <String>[];
+      final sub = c.events.listen((e) {
+        if (e is XmppSentAck) acks.add(e.stanzaId);
+      });
 
-    c.sendGroupChat(
-      roomJid: 'room1@muc.localhost',
-      body: 'muc-hi',
-      id: 'muc-1',
-    );
-    expect(c.debugPendingAckCount, 1);
+      c.sendGroupChat(
+        roomJid: 'room1@muc.localhost',
+        body: 'muc-hi',
+        id: 'muc-1',
+      );
+      expect(c.debugPendingAckCount, 1);
 
-    c.debugRouteStanza(_ack(1));
-    await Future<void>.delayed(Duration.zero);
-    expect(acks, ['muc-1']);
+      c.debugRouteStanza(_ack(1));
+      await Future<void>.delayed(Duration.zero);
+      expect(acks, ['muc-1']);
 
-    await sub.cancel();
-  });
+      await sub.cancel();
+    },
+  );
 }

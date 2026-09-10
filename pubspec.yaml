@@ -41,6 +41,8 @@ dependencies:
   flutter_chat_core: ^2.9.0
   flutter_chat_ui: ^2.11.1
   file_picker: ^8.1.0
+  image_picker: ^1.1.2
+  meta: ^1.15.0
 
 dev_dependencies:
   flutter_test:
