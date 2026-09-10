@@ -91,15 +91,14 @@ XmppMamMessage _mam({
   required DateTime sentAt,
   String from = 'bob@localhost/laptop',
   String to = 'alice@localhost',
-}) =>
-    XmppMamMessage(
-      from: from,
-      to: to,
-      body: body,
-      stanzaId: id,
-      sentAt: sentAt,
-      isGroupChat: false,
-    );
+}) => XmppMamMessage(
+  from: from,
+  to: to,
+  body: body,
+  stanzaId: id,
+  sentAt: sentAt,
+  isGroupChat: false,
+);
 
 XmppMamFin _fin({
   required String queryId,
@@ -107,14 +106,13 @@ XmppMamFin _fin({
   required String last,
   bool complete = false,
   int count = 0,
-}) =>
-    XmppMamFin(
-      queryId: queryId,
-      complete: complete,
-      first: first,
-      last: last,
-      count: count,
-    );
+}) => XmppMamFin(
+  queryId: queryId,
+  complete: complete,
+  first: first,
+  last: last,
+  count: count,
+);
 
 void main() {
   late _FakeRest fakeRest;
@@ -222,12 +220,7 @@ void main() {
       _mam(id: 'msg-10', body: 'x', sentAt: DateTime(2026, 1, 10)),
     );
     fakeXmpp.pushIncoming(
-      _fin(
-        queryId: 'initial',
-        first: 'msg-10',
-        last: 'msg-10',
-        complete: true,
-      ),
+      _fin(queryId: 'initial', first: 'msg-10', last: 'msg-10', complete: true),
     );
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
@@ -235,91 +228,83 @@ void main() {
     expect(loadOlderMessages(fakeXmpp, threadKey), isFalse);
   });
 
-  test(
-    'a load-older page piles ABOVE the existing hydrated slice',
-    () async {
-      const threadKey = 'bob@localhost';
-      final controller = container.read(chatControllerCapsule(threadKey));
+  test('a load-older page piles ABOVE the existing hydrated slice', () async {
+    const threadKey = 'bob@localhost';
+    final controller = container.read(chatControllerCapsule(threadKey));
 
-      // Initial hydration: 2 messages.
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-50', body: 'fifty', sentAt: DateTime(2026, 1, 50)),
-      );
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-51', body: 'fiftyone', sentAt: DateTime(2026, 1, 51)),
-      );
-      fakeXmpp.pushIncoming(
-        _fin(
-          queryId: 'initial',
-          first: 'msg-50',
-          last: 'msg-51',
-          complete: false,
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(controller.messages.map((m) => m.id), ['msg-50', 'msg-51']);
+    // Initial hydration: 2 messages.
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-50', body: 'fifty', sentAt: DateTime(2026, 1, 50)),
+    );
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-51', body: 'fiftyone', sentAt: DateTime(2026, 1, 51)),
+    );
+    fakeXmpp.pushIncoming(
+      _fin(
+        queryId: 'initial',
+        first: 'msg-50',
+        last: 'msg-51',
+        complete: false,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(controller.messages.map((m) => m.id), ['msg-50', 'msg-51']);
 
-      // Kick off load-older; drives a fresh page anchored at msg-50.
-      loadOlderMessages(fakeXmpp, threadKey, max: 3);
-      final qid = fakeXmpp.mamQueries.last.qid;
+    // Kick off load-older; drives a fresh page anchored at msg-50.
+    loadOlderMessages(fakeXmpp, threadKey, max: 3);
+    final qid = fakeXmpp.mamQueries.last.qid;
 
-      // Server returns 3 older ones in ASC order.
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-47', body: 'A', sentAt: DateTime(2026, 1, 47)),
-      );
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-48', body: 'B', sentAt: DateTime(2026, 1, 48)),
-      );
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-49', body: 'C', sentAt: DateTime(2026, 1, 49)),
-      );
-      fakeXmpp.pushIncoming(
-        _fin(
-          queryId: qid,
-          first: 'msg-47',
-          last: 'msg-49',
-          complete: false,
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+    // Server returns 3 older ones in ASC order.
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-47', body: 'A', sentAt: DateTime(2026, 1, 47)),
+    );
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-48', body: 'B', sentAt: DateTime(2026, 1, 48)),
+    );
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-49', body: 'C', sentAt: DateTime(2026, 1, 49)),
+    );
+    fakeXmpp.pushIncoming(
+      _fin(queryId: qid, first: 'msg-47', last: 'msg-49', complete: false),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(
-        controller.messages.map((m) => m.id).toList(),
-        ['msg-47', 'msg-48', 'msg-49', 'msg-50', 'msg-51'],
-      );
-      expect(mamPageStateOf(threadKey).oldestStanzaId, 'msg-47');
-      expect(mamPageStateOf(threadKey).canLoadMore, isTrue);
-    },
-  );
+    expect(controller.messages.map((m) => m.id).toList(), [
+      'msg-47',
+      'msg-48',
+      'msg-49',
+      'msg-50',
+      'msg-51',
+    ]);
+    expect(mamPageStateOf(threadKey).oldestStanzaId, 'msg-47');
+    expect(mamPageStateOf(threadKey).canLoadMore, isTrue);
+  });
 
-  test(
-    'load-older marks the thread complete when server ends with '
-    'fin.complete=true',
-    () async {
-      const threadKey = 'bob@localhost';
-      container.read(chatControllerCapsule(threadKey));
+  test('load-older marks the thread complete when server ends with '
+      'fin.complete=true', () async {
+    const threadKey = 'bob@localhost';
+    container.read(chatControllerCapsule(threadKey));
 
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-5', body: 'x', sentAt: DateTime(2026, 1, 5)),
-      );
-      fakeXmpp.pushIncoming(
-        _fin(queryId: 'initial', first: 'msg-5', last: 'msg-5', complete: false),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-5', body: 'x', sentAt: DateTime(2026, 1, 5)),
+    );
+    fakeXmpp.pushIncoming(
+      _fin(queryId: 'initial', first: 'msg-5', last: 'msg-5', complete: false),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      loadOlderMessages(fakeXmpp, threadKey);
-      final qid = fakeXmpp.mamQueries.last.qid;
+    loadOlderMessages(fakeXmpp, threadKey);
+    final qid = fakeXmpp.mamQueries.last.qid;
 
-      fakeXmpp.pushIncoming(
-        _mam(id: 'msg-1', body: 'first', sentAt: DateTime(2026, 1, 1)),
-      );
-      fakeXmpp.pushIncoming(
-        _fin(queryId: qid, first: 'msg-1', last: 'msg-1', complete: true),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+    fakeXmpp.pushIncoming(
+      _mam(id: 'msg-1', body: 'first', sentAt: DateTime(2026, 1, 1)),
+    );
+    fakeXmpp.pushIncoming(
+      _fin(queryId: qid, first: 'msg-1', last: 'msg-1', complete: true),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(mamPageStateOf(threadKey).complete, isTrue);
-      expect(mamPageStateOf(threadKey).canLoadMore, isFalse);
-    },
-  );
+    expect(mamPageStateOf(threadKey).complete, isTrue);
+    expect(mamPageStateOf(threadKey).canLoadMore, isFalse);
+  });
 }

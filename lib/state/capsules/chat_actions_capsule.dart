@@ -25,6 +25,7 @@ class ChatActions {
     required this.editGroup,
     required this.retractPeer,
     required this.retractGroup,
+    required this.loadOlder,
   });
 
   final void Function(RainbowUser peer, String body, {String? replyToStanzaId})
@@ -82,6 +83,10 @@ class ChatActions {
   retractPeer;
   final void Function(RainbowBubble bubble, {required String targetStanzaId})
   retractGroup;
+
+  /// Fires a XEP-0313 `<before>` anchored MAM query for older messages
+  /// on `threadKey`. Returns `true` if a request was dispatched.
+  final bool Function(String threadKey) loadOlder;
 }
 
 ChatActions chatActionsCapsule(CapsuleHandle use) {
@@ -357,6 +362,7 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     editGroup: editGroup,
     retractPeer: retractPeer,
     retractGroup: retractGroup,
+    loadOlder: (threadKey) => loadOlderMessages(xmpp, threadKey),
   );
 }
 

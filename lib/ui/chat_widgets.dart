@@ -348,3 +348,39 @@ String previewOfMessage(Message m) => switch (m) {
   FileMessage m => '📎 ${m.name}',
   _ => 'message',
 };
+
+/// A compact "Load older messages" strip. Renders as a small tappable
+/// chip while [canLoadMore] is true; morphs into a spinner while a
+/// page is in flight; hides itself once [complete] is true.
+class LoadOlderChip extends StatelessWidget {
+  const LoadOlderChip({
+    super.key,
+    required this.canLoadMore,
+    required this.isLoading,
+    required this.onTap,
+  });
+  final bool canLoadMore;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!canLoadMore && !isLoading) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Center(
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : ActionChip(
+                avatar: const Icon(Icons.history, size: 18),
+                label: const Text('Load older messages'),
+                onPressed: onTap,
+              ),
+      ),
+    );
+  }
+}

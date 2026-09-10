@@ -241,6 +241,7 @@ class RainbowXmppClient {
     _smResumable = true;
     _smid = smid;
   }
+
   @visibleForTesting
   int get debugHOut => _hOut;
   @visibleForTesting
@@ -260,6 +261,7 @@ class RainbowXmppClient {
     _channel = null;
     _fullJid = '';
   }
+
   @visibleForTesting
   void debugRouteStanza(XmlElement el) => _routeStanza(el);
 
@@ -539,7 +541,8 @@ class RainbowXmppClient {
       final set = fin.getElement('set');
       final first = set?.getElement('first')?.innerText ?? '';
       final last = set?.getElement('last')?.innerText ?? '';
-      final count = int.tryParse(set?.getElement('count')?.innerText ?? '') ?? 0;
+      final count =
+          int.tryParse(set?.getElement('count')?.innerText ?? '') ?? 0;
       final complete = fin.getAttribute('complete') == 'true';
       _events.add(
         XmppMamFin(

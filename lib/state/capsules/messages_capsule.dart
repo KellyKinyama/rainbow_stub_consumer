@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:rearch/rearch.dart';
 
@@ -32,26 +33,52 @@ final Map<ThreadKey, List<void Function(_ThreadUpdate)>> _threadUpdaters = {};
 /// inside `chatControllerCapsule` and consumed by [loadOlderMessages].
 final Map<ThreadKey, MamPageState> _mamPageState = {};
 
-/// Snapshot of a thread's MAM pagination cursor.
-class MamPageState {
+/// Snapshot of a thread's MAM pagination cursor. A [ChangeNotifier]
+/// so widgets can rebuild via `ListenableBuilder` when the cursor
+/// advances or `complete` flips.
+class MamPageState extends ChangeNotifier {
   MamPageState({
-    this.oldestStanzaId,
-    this.complete = false,
-    this.loadingQueryId,
+    String? oldestStanzaId,
+    bool complete = false,
+    String? loadingQueryId,
     this.mamInsertIndex = 0,
-  });
-  String? oldestStanzaId;
-  bool complete;
-  String? loadingQueryId;
+  }) : _oldestStanzaId = oldestStanzaId,
+       _complete = complete,
+       _loadingQueryId = loadingQueryId;
+
+  String? _oldestStanzaId;
+  String? get oldestStanzaId => _oldestStanzaId;
+  set oldestStanzaId(String? v) {
+    if (v == _oldestStanzaId) return;
+    _oldestStanzaId = v;
+    notifyListeners();
+  }
+
+  bool _complete;
+  bool get complete => _complete;
+  set complete(bool v) {
+    if (v == _complete) return;
+    _complete = v;
+    notifyListeners();
+  }
+
+  String? _loadingQueryId;
+  String? get loadingQueryId => _loadingQueryId;
+  set loadingQueryId(String? v) {
+    if (v == _loadingQueryId) return;
+    _loadingQueryId = v;
+    notifyListeners();
+  }
 
   /// Insertion index used by the MAM listener when placing an archived
   /// message into the controller. Reset to 0 at the start of every
   /// "load older" cycle by [loadOlderMessages] so an older page piles
-  /// on top of the existing hydrated slice.
+  /// on top of the existing hydrated slice. Not observed by UI.
   int mamInsertIndex;
 
   bool get canLoadMore =>
-      !complete && loadingQueryId == null && oldestStanzaId != null;
+      !_complete && _loadingQueryId == null && _oldestStanzaId != null;
+  bool get isLoading => _loadingQueryId != null;
 }
 
 /// Read-only view of the current pagination state for [threadKey].
@@ -253,22 +280,29 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
 
         // XEP-0313 <fin/> — terminates a MAM page. Updates the
         // pagination cursor for [loadOlderMessages].
-        final finSub = events.where((e) => e is XmppMamFin).cast<XmppMamFin>().listen((e) {
-          if (myGeneration != _cacheGeneration) return;
-          final state = _mamPageState.putIfAbsent(threadKey, MamPageState.new);
-          // Only touch state for pages we're expecting on this thread.
-          // Initial hydration doesn't set loadingQueryId, so we let its
-          // fin populate oldestId / complete when we see a non-empty
-          // `first`.
-          if (state.loadingQueryId != null && state.loadingQueryId != e.queryId) {
-            return;
-          }
-          if (e.first.isNotEmpty) {
-            state.oldestStanzaId = e.first;
-          }
-          state.complete = e.complete;
-          state.loadingQueryId = null;
-        });
+        final finSub = events
+            .where((e) => e is XmppMamFin)
+            .cast<XmppMamFin>()
+            .listen((e) {
+              if (myGeneration != _cacheGeneration) return;
+              final state = _mamPageState.putIfAbsent(
+                threadKey,
+                MamPageState.new,
+              );
+              // Only touch state for pages we're expecting on this thread.
+              // Initial hydration doesn't set loadingQueryId, so we let its
+              // fin populate oldestId / complete when we see a non-empty
+              // `first`.
+              if (state.loadingQueryId != null &&
+                  state.loadingQueryId != e.queryId) {
+                return;
+              }
+              if (e.first.isNotEmpty) {
+                state.oldestStanzaId = e.first;
+              }
+              state.complete = e.complete;
+              state.loadingQueryId = null;
+            });
 
         // Delivery receipts (XEP-0184 / XEP-0333 received) — stamp
         // deliveredAt on my messages so the Chat widget upgrades the

@@ -5,6 +5,7 @@ import 'package:rearch/rearch.dart';
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/push_capsule.dart';
 import 'bubbles_tab.dart';
 import 'contacts_tab.dart';
 
@@ -16,6 +17,9 @@ class HomePage extends RearchConsumer {
     final auth = use(authControllerCapsule);
     final actions = use(chatActionsCapsule);
     final me = use(authCapsule).me;
+    // Register a fake push token as a side-effect on login. Result
+    // ignored — the capsule handles retries + logout deregister.
+    use(pushCapsule);
     final (tab, setTab) = use.state<int>(0);
 
     const pages = [ContactsTab(), BubblesTab()];

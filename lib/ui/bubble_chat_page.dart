@@ -158,6 +158,17 @@ class BubbleChatPage extends RearchConsumer {
       ),
       body: Column(
         children: [
+          ListenableBuilder(
+            listenable: mamPageStateOf(threadKey),
+            builder: (ctx, _) {
+              final s = mamPageStateOf(threadKey);
+              return LoadOlderChip(
+                canLoadMore: s.canLoadMore,
+                isLoading: s.isLoading,
+                onTap: () => actions.loadOlder(threadKey),
+              );
+            },
+          ),
           Expanded(
             child: Chat(
               currentUserId: currentUserId,

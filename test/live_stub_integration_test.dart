@@ -347,4 +347,94 @@ void main() {
       restBob.close();
     },
   );
+
+  test('XEP-0313 pagination: initial fin anchors oldest; load-older '
+      'returns empty at archive boundary', () async {
+    if (!await _stubUp()) return;
+    final restAlice = RainbowRestClient(config);
+    final restBob = RainbowRestClient(config);
+    final aliceLogin = await restAlice.login(
+      'alice@rainbow-stub.local',
+      'password',
+    );
+    final bobLogin = await restBob.login('bob@rainbow-stub.local', 'password');
+
+    // Session 1: alice seeds the archive with 55 messages so a
+    // max=50 query returns a saturated page (<fin complete=false>).
+    final aliceSeed = RainbowXmppClient(
+      wsUrl: config.wsUrl,
+      domain: config.xmppDomain,
+    );
+    await aliceSeed.connect(
+      email: 'alice@rainbow-stub.local',
+      saslPassword: aliceLogin.token,
+      resource: 'flutter-mam-seed',
+    );
+    final peerBare = '${bobLogin.loggedInUser.id}@${config.xmppDomain}';
+    for (var i = 0; i < 55; i++) {
+      aliceSeed.sendChat(
+        toBareJid: peerBare,
+        body: 'seed-$i',
+        id: 'mam-seed-$i',
+      );
+    }
+    // Give the stub a beat to persist all 55 before we tear down.
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await aliceSeed.disconnect();
+
+    // Session 2: fresh connect, drive an initial MAM query + a
+    // load-older query directly on the wire.
+    final alice = RainbowXmppClient(
+      wsUrl: config.wsUrl,
+      domain: config.xmppDomain,
+    );
+    await alice.connect(
+      email: 'alice@rainbow-stub.local',
+      saslPassword: aliceLogin.token,
+      resource: 'flutter-mam-page',
+    );
+
+    final firstPageIds = <String>[];
+    final finEvents = <XmppMamFin>[];
+    final sub = alice.events.listen((e) {
+      if (e is XmppMamMessage) firstPageIds.add(e.stanzaId);
+      if (e is XmppMamFin) finEvents.add(e);
+    });
+
+    final initialQid = alice.queryMamWith(peerBare, max: 50);
+    await Future<void>.delayed(const Duration(seconds: 1));
+
+    // Initial page returns the OLDEST 50 (stub orders ASC).
+    expect(firstPageIds, hasLength(50));
+    final initialFin = finEvents.firstWhere(
+      (f) => f.queryId == initialQid,
+      orElse: () => throw StateError('no fin for initial query'),
+    );
+    expect(initialFin.first.isNotEmpty, isTrue);
+    // page 50 == max 50 → stub says complete=false ("there might be more").
+    expect(initialFin.complete, isFalse);
+    expect(initialFin.count, greaterThanOrEqualTo(55));
+
+    // Load older, anchored at the initial page's `first` id.
+    final olderQid = alice.queryMamWith(
+      peerBare,
+      max: 50,
+      beforeStanzaId: initialFin.first,
+    );
+    final beforeMsgCount = firstPageIds.length;
+    await Future<void>.delayed(const Duration(seconds: 1));
+
+    final olderFin = finEvents.firstWhere(
+      (f) => f.queryId == olderQid,
+      orElse: () => throw StateError('no fin for older query'),
+    );
+    // No older messages exist beyond the initial `first`.
+    expect(firstPageIds.length, beforeMsgCount);
+    expect(olderFin.complete, isTrue);
+
+    await sub.cancel();
+    await alice.disconnect();
+    restAlice.close();
+    restBob.close();
+  });
 }

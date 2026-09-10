@@ -148,6 +148,37 @@ class RainbowRestClient {
     _check(r);
   }
 
+  /// Registers a push notification device token with the server. The
+  /// [platform] must be one of `ios | android | web | debug`.
+  Future<void> registerPushToken({
+    required String userId,
+    required String token,
+    required String platform,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/$userId/push-tokens'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({'token': token, 'platform': platform}),
+    );
+    _check(r);
+  }
+
+  /// Removes a previously registered device token — call from a
+  /// "sign out this device" flow so we don't push to a stale token.
+  Future<void> deletePushToken({
+    required String userId,
+    required String token,
+  }) async {
+    final r = await _http.delete(
+      _u(
+        '/api/rainbow/enduser/v1.0/users/$userId/push-tokens/'
+        '${Uri.encodeComponent(token)}',
+      ),
+      headers: _authed(),
+    );
+    _check(r);
+  }
+
   /// Two-step upload — creates a descriptor, then PUTs the bytes. Returns
   /// the descriptor with the `downloadUrl` filled in.
   Future<FileDescriptor> uploadFile({
