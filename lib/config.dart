@@ -6,12 +6,20 @@ class AppConfig {
     required this.wsUrl,
     required this.appAuth,
     required this.xmppDomain,
+    this.iceServers = const [
+      {'urls': 'stun:stun.l.google.com:19302'},
+    ],
   });
 
   final Uri baseUrl;
   final Uri wsUrl;
   final String appAuth;
   final String xmppDomain;
+
+  /// WebRTC ICE server list in the shape `flutter_webrtc` expects.
+  /// Default: Google's public STUN. TURN can be added by callers when
+  /// available (see docs/webrtc-roadmap.md M-7).
+  final List<Map<String, dynamic>> iceServers;
 
   /// Default dev config — targets a local rainbow-stub on :8443.
   /// On the Android emulator swap `localhost` for `10.0.2.2`.
