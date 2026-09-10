@@ -108,6 +108,19 @@ class SfuGroupCallSession {
     }
   }
 
+  /// Mutes / unmutes the local microphone. No-op before [connect].
+  Future<void> setMicrophoneMuted(bool muted) =>
+      _session?.setMicrophoneMuted(muted) ?? Future.value();
+
+  /// Toggles the local camera track's `enabled` flag. No-op if this
+  /// session was created audio-only.
+  Future<void> setCameraEnabled(bool enabled) =>
+      _session?.setCameraEnabled(enabled) ?? Future.value();
+
+  /// Cycles between front and rear cameras.
+  Future<void> switchCamera() =>
+      _session?.switchCamera() ?? Future.value();
+
   Future<void> close() async {
     if (_closed) return;
     _closed = true;

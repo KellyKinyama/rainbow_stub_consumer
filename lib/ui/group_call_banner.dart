@@ -4,6 +4,7 @@ import 'package:flutter_rearch/flutter_rearch.dart';
 import '../rainbow/models.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/group_call_capsule.dart';
+import 'group_call_screen.dart';
 
 /// Bubble-scoped group-call strip at the top of `BubbleChatPage`.
 class GroupCallBanner extends RearchConsumer {
@@ -20,7 +21,29 @@ class GroupCallBanner extends RearchConsumer {
       listenable: manager,
       builder: (ctx, _) {
         if (manager.joinedCalls.containsKey(roomJid)) {
+          // Auto-push the full-screen surface the first time we
+          // transition into the "joined" state for this room.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_screenOpen(context, roomJid)) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => GroupCallScreen(roomBareJid: roomJid),
+                  settings: RouteSettings(name: 'gcall:$roomJid'),
+                ),
+              );
+            }
+          });
           return _InCallStrip(
+            onOpen: () {
+              if (!_screenOpen(context, roomJid)) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => GroupCallScreen(roomBareJid: roomJid),
+                    settings: RouteSettings(name: 'gcall:$roomJid'),
+                  ),
+                );
+              }
+            },
             onLeave: () => manager.leaveGroupCall(roomJid, announceEnd: false),
           );
         }
@@ -115,28 +138,44 @@ class _JoinStrip extends StatelessWidget {
 }
 
 class _InCallStrip extends StatelessWidget {
-  const _InCallStrip({required this.onLeave});
+  const _InCallStrip({required this.onLeave, required this.onOpen});
   final VoidCallback onLeave;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Theme.of(context).colorScheme.primaryContainer,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            const Icon(Icons.groups),
-            const SizedBox(width: 12),
-            const Expanded(child: Text('You are in this group call')),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.call_end),
-              label: const Text('Leave'),
-              onPressed: onLeave,
-            ),
-          ],
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.groups),
+              const SizedBox(width: 12),
+              const Expanded(child: Text('You are in this group call · tap to open')),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.call_end),
+                label: const Text('Leave'),
+                onPressed: onLeave,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+// Peek at the navigator stack without popping — the top routes are
+// walked and the flag is set if any of them was labelled with our
+// `gcall:$sid` name. Used to avoid pushing the same screen twice.
+bool _screenOpen(BuildContext ctx, String roomJid) {
+  var open = false;
+  Navigator.of(ctx).popUntil((route) {
+    if (route.settings.name == 'gcall:$roomJid') open = true;
+    return true;
+  });
+  return open;
 }

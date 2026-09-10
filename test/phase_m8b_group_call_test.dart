@@ -43,6 +43,9 @@ class _FakeSession implements RtcSession {
   int answersCreated = 0;
   final remoteCandidates =
       <({String candidate, String? sdpMid, int? sdpMLineIndex})>[];
+  final micMutedCalls = <bool>[];
+  final cameraEnabledCalls = <bool>[];
+  int switchCameraCalls = 0;
   bool closed = false;
 
   void push(RtcSessionEvent e) {
@@ -90,11 +93,19 @@ class _FakeSession implements RtcSession {
   }
 
   @override
-  Future<void> setMicrophoneMuted(bool muted) async {}
+  Future<void> setMicrophoneMuted(bool muted) async {
+    micMutedCalls.add(muted);
+  }
+
   @override
-  Future<void> setCameraEnabled(bool enabled) async {}
+  Future<void> setCameraEnabled(bool enabled) async {
+    cameraEnabledCalls.add(enabled);
+  }
+
   @override
-  Future<void> switchCamera() async {}
+  Future<void> switchCamera() async {
+    switchCameraCalls++;
+  }
   @override
   Future<void> close() async {
     closed = true;
@@ -427,4 +438,47 @@ void main() {
       await manager.dispose();
     },
   );
+
+  test(
+    'session control passthroughs forward to the underlying RtcSession',
+    () async {
+      final signaling = _FakeSignaling();
+      final adapter = _FakeAdapter();
+      final session = SfuGroupCallSession(
+        signaling: signaling,
+        adapter: adapter,
+        sid: 'r',
+        uid: 'u',
+      );
+      await session.connect(video: true);
+
+      await session.setMicrophoneMuted(true);
+      await session.setMicrophoneMuted(false);
+      await session.setCameraEnabled(false);
+      await session.switchCamera();
+
+      final rtc = adapter.sessions.single;
+      expect(rtc.micMutedCalls, [true, false]);
+      expect(rtc.cameraEnabledCalls, [false]);
+      expect(rtc.switchCameraCalls, 1);
+      await session.close();
+    },
+  );
+
+  test('control passthroughs are no-ops when connect has not run', () async {
+    final signaling = _FakeSignaling();
+    final adapter = _FakeAdapter();
+    final session = SfuGroupCallSession(
+      signaling: signaling,
+      adapter: adapter,
+      sid: 'r',
+      uid: 'u',
+    );
+    // Never call connect(); the fake adapter should stay untouched.
+    await session.setMicrophoneMuted(true);
+    await session.setCameraEnabled(true);
+    await session.switchCamera();
+    expect(adapter.sessions, isEmpty);
+    await session.close();
+  });
 }
