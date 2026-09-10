@@ -73,9 +73,11 @@ class _FakeXmpp extends RainbowXmppClient {
     required String targetStanzaId,
     bool isGroupChat = false,
   }) {
-    retracts.add(
-      (to: toBareJid, targetId: targetStanzaId, isGroupChat: isGroupChat),
-    );
+    retracts.add((
+      to: toBareJid,
+      targetId: targetStanzaId,
+      isGroupChat: isGroupChat,
+    ));
   }
 
   @override
@@ -195,7 +197,11 @@ void main() {
 
   test('retractGroup sends XEP-0424 to the MUC bare JID', () async {
     const bubbleJid = 'room1@muc.localhost';
-    final bubble = RainbowBubble(id: 'room1', name: 'Room 1', members: const []);
+    final bubble = RainbowBubble(
+      id: 'room1',
+      name: 'Room 1',
+      members: const [],
+    );
 
     container
         .read(chatActionsCapsule)
@@ -206,27 +212,24 @@ void main() {
     expect(fakeXmpp.retracts.single.isGroupChat, isTrue);
   });
 
-  test(
-    'XmppSentAck stamps sentAt and clears MessageStatus.sending',
-    () async {
-      const threadKey = 'bob@localhost';
-      final controller = container.read(chatControllerCapsule(threadKey));
-      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+  test('XmppSentAck stamps sentAt and clears MessageStatus.sending', () async {
+    const threadKey = 'bob@localhost';
+    final controller = container.read(chatControllerCapsule(threadKey));
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
 
-      container.read(chatActionsCapsule).sendPeer(peer, 'ping');
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      final myStanzaId = fakeXmpp.sent.single.id!;
+    container.read(chatActionsCapsule).sendPeer(peer, 'ping');
+    await Future<void>.delayed(const Duration(milliseconds: 5));
+    final myStanzaId = fakeXmpp.sent.single.id!;
 
-      final pending = controller.messages.single as TextMessage;
-      expect(pending.status, MessageStatus.sending);
-      expect(pending.sentAt, isNull);
+    final pending = controller.messages.single as TextMessage;
+    expect(pending.status, MessageStatus.sending);
+    expect(pending.sentAt, isNull);
 
-      fakeXmpp.pushIncoming(XmppSentAck(stanzaId: myStanzaId));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+    fakeXmpp.pushIncoming(XmppSentAck(stanzaId: myStanzaId));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      final acked = controller.messages.single as TextMessage;
-      expect(acked.status, isNull);
-      expect(acked.sentAt, isNotNull);
-    },
-  );
+    final acked = controller.messages.single as TextMessage;
+    expect(acked.status, isNull);
+    expect(acked.sentAt, isNotNull);
+  });
 }

@@ -124,4 +124,138 @@ void main() {
       restBob.close();
     },
   );
+
+  test(
+    'XEP-0198 stream management: sendChat causes XmppSentAck via <a h=…/>',
+    () async {
+      if (!await _stubUp()) return;
+      final restAlice = RainbowRestClient(config);
+      final restBob = RainbowRestClient(config);
+      final aliceLogin = await restAlice.login(
+        'alice@rainbow-stub.local',
+        'password',
+      );
+      final bobLogin = await restBob.login(
+        'bob@rainbow-stub.local',
+        'password',
+      );
+
+      final alice = RainbowXmppClient(
+        wsUrl: config.wsUrl,
+        domain: config.xmppDomain,
+      );
+      await alice.connect(
+        email: 'alice@rainbow-stub.local',
+        saslPassword: aliceLogin.token,
+        resource: 'flutter-sm',
+      );
+
+      final acked = Completer<XmppSentAck>();
+      final sub = alice.events.listen((e) {
+        if (e is XmppSentAck && !acked.isCompleted) acked.complete(e);
+      });
+
+      const outboundId = 'sm-live-1';
+      alice.sendChat(
+        toBareJid: '${bobLogin.loggedInUser.id}@${config.xmppDomain}',
+        body: 'sm-ack ping',
+        id: outboundId,
+      );
+
+      final ack = await acked.future.timeout(const Duration(seconds: 5));
+      expect(ack.stanzaId, outboundId);
+
+      await sub.cancel();
+      await alice.disconnect();
+      restAlice.close();
+      restBob.close();
+    },
+  );
+
+  test('MUC reactions persist across signout via MAM replay', () async {
+    if (!await _stubUp()) return;
+    final restAlice = RainbowRestClient(config);
+    final aliceLogin = await restAlice.login(
+      'alice@rainbow-stub.local',
+      'password',
+    );
+
+    // Create a fresh bubble owned by alice; she's auto-added as
+    // accepted owner so she can send + react immediately.
+    final bubble = await restAlice.createRoom(
+      'sm-i-${DateTime.now().microsecondsSinceEpoch}',
+    );
+
+    final roomJid = '${bubble.id}@muc.${config.xmppDomain}';
+
+    // First session: alice sends a message, then a reaction on it.
+    final alice1 = RainbowXmppClient(
+      wsUrl: config.wsUrl,
+      domain: config.xmppDomain,
+    );
+    await alice1.connect(
+      email: 'alice@rainbow-stub.local',
+      saslPassword: aliceLogin.token,
+      resource: 'flutter-muc-a',
+    );
+    alice1.joinMuc(roomJid, aliceLogin.loggedInUser.id);
+
+    final ownEcho = Completer<XmppChatMessage>();
+    final sub1 = alice1.events.listen((e) {
+      if (e is XmppChatMessage &&
+          e.isGroupChat &&
+          e.body == 'muc-persist-target' &&
+          !ownEcho.isCompleted) {
+        ownEcho.complete(e);
+      }
+    });
+
+    const targetId = 'muc-persist-1';
+    alice1.sendGroupChat(
+      roomJid: roomJid,
+      body: 'muc-persist-target',
+      id: targetId,
+    );
+    await ownEcho.future.timeout(const Duration(seconds: 5));
+
+    alice1.sendReactions(
+      toBareJid: roomJid,
+      targetStanzaId: targetId,
+      emojis: const ['🔥'],
+      isGroupChat: true,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    await sub1.cancel();
+    await alice1.disconnect();
+
+    // Second session: alice re-connects, queries MAM for the room —
+    // reactions should be replayed as a live <message><reactions>/>.
+    final alice2 = RainbowXmppClient(
+      wsUrl: config.wsUrl,
+      domain: config.xmppDomain,
+    );
+    await alice2.connect(
+      email: 'alice@rainbow-stub.local',
+      saslPassword: aliceLogin.token,
+      resource: 'flutter-muc-b',
+    );
+
+    final replayed = Completer<XmppReactions>();
+    final sub2 = alice2.events.listen((e) {
+      if (e is XmppReactions &&
+          e.targetStanzaId == targetId &&
+          !replayed.isCompleted) {
+        replayed.complete(e);
+      }
+    });
+    alice2.queryMamWith(roomJid, max: 20);
+
+    final r = await replayed.future.timeout(const Duration(seconds: 5));
+    expect(r.emojis, contains('🔥'));
+
+    await sub2.cancel();
+    await alice2.disconnect();
+    restAlice.close();
+  });
 }

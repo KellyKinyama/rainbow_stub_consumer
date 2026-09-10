@@ -183,6 +183,22 @@ class RainbowXmppClient {
       : _fullJid;
   bool get isConnected => _channel != null && _fullJid.isNotEmpty;
 
+  // XEP-0198 stream management. Once the server has answered <enabled/>
+  // we count every outgoing counted stanza in [_hOut] and every inbound
+  // counted stanza in [_hIn]. Body-bearing sends also register in
+  // [_pendingAcks] so an incoming `<a h="N"/>` can fan out XmppSentAck.
+  static const _smNs = 'urn:xmpp:sm:3';
+  bool _smEnabled = false;
+  int _hOut = 0;
+  int _hIn = 0;
+  final _pendingAcks = <int, String>{};
+
+  /// Write [stanza] to the socket, counting it for XEP-0198 if SM is on.
+  void _send(String stanza) {
+    if (_smEnabled) _hOut++;
+    _channel?.sink.add(stanza);
+  }
+
   Future<void> connect({
     required String email,
     required String saslPassword,
@@ -270,18 +286,58 @@ class RainbowXmppClient {
     // Kick off routing loop on subsequent stanzas.
     incoming.stream.listen(_routeStanza);
 
+    // XEP-0198 stream management. Best-effort: if the server doesn't
+    // answer <enabled/> within 3s we silently fall back to a plain
+    // stream (sender-side "sent" status will simply stay `sending`).
+    ch.sink.add('<enable xmlns="$_smNs"/>');
+    try {
+      final smResp = await incoming.stream
+          .firstWhere(
+            (e) =>
+                e.name.namespaceUri == _smNs &&
+                (e.localName == 'enabled' || e.localName == 'failed'),
+          )
+          .timeout(const Duration(seconds: 3));
+      _smEnabled = smResp.localName == 'enabled';
+    } catch (_) {
+      _smEnabled = false;
+    }
+
     // Initial presence — triggers server-side roster presence probe reply.
-    ch.sink.add('<presence/>');
+    _send('<presence/>');
 
     _events.add(XmppConnected(_fullJid));
   }
 
   void _routeStanza(XmlElement el) {
+    // XEP-0198 control stanzas are NOT counted.
+    if (el.name.namespaceUri == _smNs) {
+      switch (el.localName) {
+        case 'r':
+          _channel?.sink.add('<a xmlns="$_smNs" h="$_hIn"/>');
+        case 'a':
+          _handleSmAck(el);
+      }
+      return;
+    }
+    if (_smEnabled) _hIn++;
     switch (el.localName) {
       case 'message':
         _handleMessage(el);
       case 'presence':
         _handlePresence(el);
+    }
+  }
+
+  void _handleSmAck(XmlElement el) {
+    final h = int.tryParse(el.getAttribute('h') ?? '');
+    if (h == null) return;
+    final acked = _pendingAcks.keys.where((k) => k <= h).toList();
+    for (final k in acked) {
+      final id = _pendingAcks.remove(k);
+      if (id != null && id.isNotEmpty) {
+        _events.add(XmppSentAck(stanzaId: id));
+      }
     }
   }
 
@@ -365,11 +421,9 @@ class RainbowXmppClient {
     }
 
     // Server-issued sent-ack for one of my messages.
-    final sentEl = el.getElement('sent');
-    if (sentEl != null && _hasXmlns(sentEl, 'urn:xmpp:sent-ack:1')) {
-      _events.add(XmppSentAck(stanzaId: sentEl.getAttribute('id') ?? ''));
-      return;
-    }
+    // Historically emitted as `<sent xmlns="urn:xmpp:sent-ack:1"/>`;
+    // now derived from XEP-0198 `<a h="N"/>` in `_handleSmAck`. The
+    // legacy detection is gone.
 
     final body = el.getElement('body')?.innerText;
     if (body == null) return;
@@ -492,7 +546,7 @@ class RainbowXmppClient {
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
-    _channel?.sink.add(
+    _send(
       '<message id="$stanzaId" to="$toBareJid" type="chat">'
       '<body>${_esc(body)}</body>'
       '${_renderFile(attachment)}'
@@ -501,6 +555,13 @@ class RainbowXmppClient {
       '<markable xmlns="urn:xmpp:chat-markers:0"/>'
       '</message>',
     );
+    // XEP-0198: remember which outgoing counter this stanza sat at so
+    // that a subsequent `<a h="N"/>` from the server can fan out an
+    // XmppSentAck for it. Then solicit an ack now.
+    if (_smEnabled) {
+      _pendingAcks[_hOut] = stanzaId;
+      _channel?.sink.add('<r xmlns="$_smNs"/>');
+    }
   }
 
   void sendGroupChat({
@@ -512,13 +573,17 @@ class RainbowXmppClient {
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
-    _channel?.sink.add(
+    _send(
       '<message id="$stanzaId" to="$roomJid" type="groupchat">'
       '<body>${_esc(body)}</body>'
       '${_renderFile(attachment)}'
       '${_renderReply(replyToStanzaId)}'
       '</message>',
     );
+    if (_smEnabled) {
+      _pendingAcks[_hOut] = stanzaId;
+      _channel?.sink.add('<r xmlns="$_smNs"/>');
+    }
   }
 
   static String _renderFile(XmppAttachment? f) {
@@ -537,7 +602,7 @@ class RainbowXmppClient {
   }
 
   void joinMuc(String roomJid, String nick) {
-    _channel?.sink.add('<presence to="$roomJid/$nick"/>');
+    _send('<presence to="$roomJid/$nick"/>');
   }
 
   /// XEP-0444 reactions — an idempotent snapshot of the sender's current
@@ -559,7 +624,7 @@ class RainbowXmppClient {
       buf.write('<reaction>${_esc(e)}</reaction>');
     }
     buf.write('</reactions></message>');
-    _channel?.sink.add(buf.toString());
+    _send(buf.toString());
   }
 
   /// XEP-0308 last-message correction — publishes a NEW stanza that
@@ -574,7 +639,7 @@ class RainbowXmppClient {
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
-    _channel?.sink.add(
+    _send(
       '<message id="$stanzaId" to="${_esc(toBareJid)}"'
       ' type="${isGroupChat ? 'groupchat' : 'chat'}">'
       '<body>${_esc(newBody)}</body>'
@@ -591,7 +656,7 @@ class RainbowXmppClient {
     required String targetStanzaId,
     bool isGroupChat = false,
   }) {
-    _channel?.sink.add(
+    _send(
       '<message to="${_esc(toBareJid)}"'
       ' type="${isGroupChat ? 'groupchat' : 'chat'}">'
       '<retract xmlns="urn:xmpp:message-retract:1"'
@@ -606,7 +671,7 @@ class RainbowXmppClient {
     required String toBareJid,
     required String stanzaId,
   }) {
-    _channel?.sink.add(
+    _send(
       '<message to="${_esc(toBareJid)}">'
       '<received xmlns="urn:xmpp:receipts" id="${_esc(stanzaId)}"/>'
       '</message>',
@@ -616,7 +681,7 @@ class RainbowXmppClient {
   /// XEP-0333 chat marker — tells [toBareJid] we viewed their message
   /// with id [stanzaId].
   void sendReadMarker({required String toBareJid, required String stanzaId}) {
-    _channel?.sink.add(
+    _send(
       '<message to="${_esc(toBareJid)}">'
       '<displayed xmlns="urn:xmpp:chat-markers:0" id="${_esc(stanzaId)}"/>'
       '</message>',
@@ -626,7 +691,7 @@ class RainbowXmppClient {
   /// XEP-0085 chat state ([state] is composing / paused / active /
   /// inactive / gone).
   void sendChatState({required String toBareJid, required String state}) {
-    _channel?.sink.add(
+    _send(
       '<message to="${_esc(toBareJid)}" type="chat">'
       '<$state xmlns="http://jabber.org/protocol/chatstates"/>'
       '</message>',
@@ -636,7 +701,7 @@ class RainbowXmppClient {
   /// XEP-0313 MAM query for 1:1 history with [peerBareJid].
   void queryMamWith(String peerBareJid, {int max = 50}) {
     final qid = 'mam-${DateTime.now().microsecondsSinceEpoch}';
-    _channel?.sink.add(
+    _send(
       '<iq type="set" id="$qid">'
       '<query xmlns="urn:xmpp:mam:2" queryid="$qid">'
       '<x xmlns="jabber:x:data" type="submit">'
