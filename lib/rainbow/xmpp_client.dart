@@ -179,6 +179,25 @@ class XmppMamFin extends XmppEvent {
   final int count;
 }
 
+/// XEP-0166 Jingle signaling event. The [jingleXml] is the raw
+/// `<jingle .../>` element serialised as XML so the call layer can
+/// deserialise the `<content>`, `<description>`, and `<transport>`
+/// children without this parser needing to know about SDP.
+class XmppJingle extends XmppEvent {
+  const XmppJingle({
+    required this.fromFullJid,
+    required this.iqId,
+    required this.sid,
+    required this.action,
+    required this.jingleXml,
+  });
+  final String fromFullJid;
+  final String iqId;
+  final String sid;
+  final String action;
+  final String jingleXml;
+}
+
 class RainbowXmppClient {
   RainbowXmppClient({
     required this.wsUrl,
@@ -533,9 +552,9 @@ class RainbowXmppClient {
   }
 
   void _handleIq(XmlElement el) {
-    // We only care about MAM <fin/> right now — every other iq we
-    // receive is a bind/enable response consumed synchronously during
-    // connect() / resume(), never through _routeStanza.
+    // MAM <fin/> and Jingle are the only iqs that reach the routing
+    // loop; everything else (bind, sm enable, roster get) is consumed
+    // synchronously during connect() / resume().
     final fin = el.getElement('fin');
     if (fin != null && _isMamNamespace(fin)) {
       final set = fin.getElement('set');
@@ -551,6 +570,19 @@ class RainbowXmppClient {
           first: first,
           last: last,
           count: count,
+        ),
+      );
+      return;
+    }
+    final jingle = el.getElement('jingle');
+    if (jingle != null && _hasXmlns(jingle, 'urn:xmpp:jingle:1')) {
+      _events.add(
+        XmppJingle(
+          fromFullJid: el.getAttribute('from') ?? '',
+          iqId: el.getAttribute('id') ?? '',
+          sid: jingle.getAttribute('sid') ?? '',
+          action: jingle.getAttribute('action') ?? '',
+          jingleXml: jingle.toXmlString(),
         ),
       );
     }
@@ -954,6 +986,36 @@ class RainbowXmppClient {
       '</query></iq>',
     );
     return qid;
+  }
+
+  /// XEP-0166 Jingle session signaling. [toFullJid] is the peer's
+  /// full JID (Jingle is per-resource — the stub routes on local-part,
+  /// but a real server pins on resource). [contentXml] is the caller-
+  /// prepared payload — for `session-initiate` that's the `<content>`
+  /// element with a `<description>` + `<transport>`; for
+  /// `transport-info` it's typically a single candidate.
+  ///
+  /// Returns the iq id so the caller can await the ack (currently the
+  /// stub replies with an empty `<iq type="result"/>` immediately).
+  String sendJingle({
+    required String toFullJid,
+    required String action,
+    required String sid,
+    required String contentXml,
+    String? initiator,
+    String? responder,
+  }) {
+    final iqId = 'jingle-${DateTime.now().microsecondsSinceEpoch}';
+    final initAttr = initiator == null ? '' : ' initiator="${_esc(initiator)}"';
+    final respAttr = responder == null ? '' : ' responder="${_esc(responder)}"';
+    _send(
+      '<iq type="set" id="$iqId" to="${_esc(toFullJid)}">'
+      '<jingle xmlns="urn:xmpp:jingle:1" action="${_esc(action)}"'
+      ' sid="${_esc(sid)}"$initAttr$respAttr>'
+      '$contentXml'
+      '</jingle></iq>',
+    );
+    return iqId;
   }
 
   Future<void> disconnect() async {
