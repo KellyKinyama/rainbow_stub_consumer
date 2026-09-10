@@ -141,6 +141,25 @@ class XmppMessageCorrection extends XmppEvent {
   final bool isGroupChat;
 }
 
+/// XEP-0424 message retraction — the target message should be removed.
+class XmppRetract extends XmppEvent {
+  const XmppRetract({
+    required this.fromBare,
+    required this.targetStanzaId,
+    required this.isGroupChat,
+  });
+  final String fromBare;
+  final String targetStanzaId;
+  final bool isGroupChat;
+}
+
+/// Server-issued sent-ack — the corresponding local echo can transition
+/// from `MessageStatus.sending` to `sent`.
+class XmppSentAck extends XmppEvent {
+  const XmppSentAck({required this.stanzaId});
+  final String stanzaId;
+}
+
 class RainbowXmppClient {
   RainbowXmppClient({
     required this.wsUrl,
@@ -328,6 +347,27 @@ class RainbowXmppClient {
           emojis: emojis,
         ),
       );
+      return;
+    }
+
+    // XEP-0424 message retraction — no body, `<retract id="…"/>`.
+    final retractEl = el.getElement('retract');
+    if (retractEl != null &&
+        _hasXmlns(retractEl, 'urn:xmpp:message-retract:1')) {
+      _events.add(
+        XmppRetract(
+          fromBare: fromBare,
+          targetStanzaId: retractEl.getAttribute('id') ?? '',
+          isGroupChat: el.getAttribute('type') == 'groupchat',
+        ),
+      );
+      return;
+    }
+
+    // Server-issued sent-ack for one of my messages.
+    final sentEl = el.getElement('sent');
+    if (sentEl != null && _hasXmlns(sentEl, 'urn:xmpp:sent-ack:1')) {
+      _events.add(XmppSentAck(stanzaId: sentEl.getAttribute('id') ?? ''));
       return;
     }
 
@@ -540,6 +580,22 @@ class RainbowXmppClient {
       '<body>${_esc(newBody)}</body>'
       '<replace xmlns="urn:xmpp:message-correct:0"'
       ' id="${_esc(originalStanzaId)}"/>'
+      '</message>',
+    );
+  }
+
+  /// XEP-0424 message retraction — instructs the peer(s) to remove the
+  /// message with [targetStanzaId] from their view.
+  void sendRetract({
+    required String toBareJid,
+    required String targetStanzaId,
+    bool isGroupChat = false,
+  }) {
+    _channel?.sink.add(
+      '<message to="${_esc(toBareJid)}"'
+      ' type="${isGroupChat ? 'groupchat' : 'chat'}">'
+      '<retract xmlns="urn:xmpp:message-retract:1"'
+      ' id="${_esc(targetStanzaId)}"/>'
       '</message>',
     );
   }

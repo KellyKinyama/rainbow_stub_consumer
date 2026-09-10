@@ -23,6 +23,8 @@ class ChatActions {
     required this.reactToGroup,
     required this.editPeer,
     required this.editGroup,
+    required this.retractPeer,
+    required this.retractGroup,
   });
 
   final void Function(RainbowUser peer, String body, {String? replyToStanzaId})
@@ -76,6 +78,10 @@ class ChatActions {
     required String newBody,
   })
   editGroup;
+  final void Function(RainbowUser peer, {required String targetStanzaId})
+  retractPeer;
+  final void Function(RainbowBubble bubble, {required String targetStanzaId})
+  retractGroup;
 }
 
 ChatActions chatActionsCapsule(CapsuleHandle use) {
@@ -106,6 +112,7 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
         sentAt: DateTime.now(),
         isMine: true,
         replyToStanzaId: replyToStanzaId,
+        pendingAck: true,
       ),
     );
   }
@@ -319,6 +326,22 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     );
   }
 
+  void retractPeer(RainbowUser peer, {required String targetStanzaId}) {
+    final key = peerThreadKey(peer);
+    xmpp.sendRetract(toBareJid: key, targetStanzaId: targetStanzaId);
+    applyRetractLocally(threadKey: key, targetStanzaId: targetStanzaId);
+  }
+
+  void retractGroup(RainbowBubble bubble, {required String targetStanzaId}) {
+    final key = bubbleThreadKey(bubble);
+    xmpp.sendRetract(
+      toBareJid: key,
+      targetStanzaId: targetStanzaId,
+      isGroupChat: true,
+    );
+    applyRetractLocally(threadKey: key, targetStanzaId: targetStanzaId);
+  }
+
   return ChatActions(
     sendPeer: sendPeer,
     sendGroup: sendGroup,
@@ -332,6 +355,8 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     reactToGroup: reactToGroup,
     editPeer: editPeer,
     editGroup: editGroup,
+    retractPeer: retractPeer,
+    retractGroup: retractGroup,
   );
 }
 

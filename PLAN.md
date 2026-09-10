@@ -266,9 +266,28 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - Stub `dart test` → 40/41 pass (`users_test.dart` multipart-avatar test is the known pre-existing Windows socket-starvation flake, unrelated to Phase H).
   - Session log: `docs/phase-h-log.md`.
 - **Deferred:**
-  - **XEP-0424 message retraction ("delete for everyone"):** would surface as a `<retract id="…"/>` element on a new message; UI-side would call `controller.removeMessage`. Skipped in favor of the copy/edit/react trio.
-  - **Group reactions/edits in the bubble chat page:** the actions expose `reactToGroup` / `editGroup`, but the long-press UI is only wired on `ChatPage`. Adding it to `BubbleChatPage` is one drop-in expression away — deferred to keep the diff small.
-  - **Rendering the reply preview inline:** `Message.replyToMessageId` is set; the default `flutter_chat_ui` renderer doesn't automatically show the quoted card. Custom `textMessageBuilder` that looks up the target and renders a preview would take that to full parity — deferred.
+  - ~~**XEP-0424 message retraction ("delete for everyone")**~~ — shipped in Phase I.
+  - ~~**Group reactions/edits in the bubble chat page**~~ — shipped in Phase I (`BubbleChatPage` now mirrors `ChatPage`).
+  - ~~**Rendering the reply preview inline**~~ — shipped in Phase I (shared `wrapChatBubble` renders a quoted card above the bubble).
+
+### Phase I — Loose ends from Phase H (S) — ✅ done 2026-09-11
+
+- **Done:**
+  - **XEP-0424 retraction ("Delete for everyone"):** new `XmppRetract(fromBare, targetStanzaId, isGroupChat)` event and `RainbowXmppClient.sendRetract(toBareJid, targetStanzaId, isGroupChat)`. Stub enforces "only the original sender may retract" and deletes the archived row so MAM never returns it again; 1:1 also emits a peer-side no-body forward. `chatActionsCapsule.retractPeer` / `retractGroup` wired; `applyRetractLocally` fans out via the `_threadUpdaters` registry; a new `_RetractUpdate` case in `handleUpdate` calls `controller.removeMessage`.
+  - **Sender "sending → sent" transition:** new stub-only namespace `urn:xmpp:sent-ack:1`. Stub emits `<sent id="…"/>` immediately after `messages.insert` on the 1:1 body path. `ChatMessage.pendingAck: bool` maps to `MessageStatus.sending` in `_toChatUiMessage`; the new `XmppSentAck` listener calls `_stampSent` which clears the status and stamps `sentAt`. `_stampStatus` (delivery-receipt / read-marker path) does the same clean-up so the two paths converge on the same "at least sent" state.
+  - **`BubbleChatPage` long-press menu:** now mirrors `ChatPage` — 6 quick-react emojis + Reply + Edit (my TextMessages only) + Copy + "Delete for everyone" (my messages only). Reply / edit banners over the composer. `Chat.onMessageSend` dispatches to `editGroup` or `sendGroup(replyToStanzaId: …)`.
+  - **Inline reply preview:** shared `wrapChatBubble` helper in `lib/ui/chat_widgets.dart`. Both chat pages plug it into their `textMessageBuilder` / `imageMessageBuilder`, and the target is resolved on the fly with `controller.messages.firstWhere((m) => m.id == replyToMessageId)` so it reacts to concurrent edits / retracts of the target.
+  - **Reaction chip tap-to-toggle:** each chip is an `InkWell`; tapping dispatches `reactToPeer` / `reactToGroup` with the current user's snapshot XOR the tapped emoji. The chip is highlighted (primary container fill) when the current user is in its reactor list.
+  - **UI helper extraction:** `lib/ui/chat_widgets.dart` centralizes `showMessageActions` (sealed `MessageActionChoice`), `wrapChatBubble`, `ChatReplyBanner`, `ChatEditBanner`, `previewOfMessage`. Both chat pages depend on it.
+- **Acceptance evidence (2026-09-11):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new files (9 pre-existing info-level style suggestions unchanged).
+  - `flutter test --exclude-tags=live` → **42/42** pass. The pending "should stamp deliveredAt without a separate sent-ack" test in Phase F was fixed by folding sent-ack semantics into `_stampStatus`.
+  - Stub `dart test` → 40/41 pass (same pre-existing multipart-avatar flake as before).
+  - Session log: `docs/phase-i-log.md`.
+- **Deferred:**
+  - Dedicated `test/phase_i_retract_test.dart` covering (a) outbound `retractPeer` sends `<retract>` and removes locally, (b) inbound `XmppRetract` removes, (c) foreign-sender retracts are silently dropped. Existing controller-lifecycle harness catches regressions but the coverage isn't explicit yet.
+  - Real stream-management ack (XEP-0198) in place of the stub-only `urn:xmpp:sent-ack:1` namespace.
+  - MUC reactions persistence — currently only 1:1 reactions survive signout; MUC still relies on live stanzas.
 
 ## 7. File-level change plan
 

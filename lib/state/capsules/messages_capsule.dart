@@ -271,6 +271,37 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               );
             });
 
+        // XEP-0424 retract — remove the target message from the
+        // controller. Also fires for my own retracts (fanned out by the
+        // stub back to me for cross-session symmetry).
+        final retractSub = events
+            .where((e) => e is XmppRetract)
+            .cast<XmppRetract>()
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              final fromLocal = _localPart(e.fromBare);
+              final fromMatchesMe =
+                  myUserId != null && fromLocal == myUserId;
+              // For 1:1 accept retracts either from the peer OR my
+              // own outgoing echo. For MUC accept anything on the thread.
+              final belongs = e.isGroupChat
+                  ? e.fromBare.contains('@muc.') &&
+                      _bareJid(e.fromBare) == threadKey
+                  : (e.fromBare == threadKey || fromMatchesMe);
+              if (!belongs) return;
+              await _applyRetract(controller, e.targetStanzaId);
+            });
+
+        // Server-issued sent-ack — flip our locally-echoed message
+        // from MessageStatus.sending → sent.
+        final sentAckSub = events
+            .where((e) => e is XmppSentAck)
+            .cast<XmppSentAck>()
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              await _stampSent(controller, stanzaId: e.stanzaId);
+            });
+
         // Register a thread updater so [applyReactionsLocally] and
         // [applyEditLocally] fan out to us.
         void handleUpdate(_ThreadUpdate u) async {
@@ -293,6 +324,8 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                 originalStanzaId: originalStanzaId,
                 newBody: newBody,
               );
+            case _RetractUpdate(:final targetStanzaId):
+              await _applyRetract(controller, targetStanzaId);
           }
         }
 
@@ -306,6 +339,8 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
           markerSub.cancel();
           reactionsSub.cancel();
           correctionSub.cancel();
+          retractSub.cancel();
+          sentAckSub.cancel();
           _threadUpdaters[threadKey]?.remove(handleUpdate);
         };
       }, [events, threadKey, myUserId]);
@@ -404,6 +439,15 @@ void applyEditLocally({
   );
 }
 
+/// XEP-0424 retract — drops the target message from all live views of
+/// [threadKey].
+void applyRetractLocally({
+  required ThreadKey threadKey,
+  required String targetStanzaId,
+}) {
+  _dispatchUpdate(threadKey, _RetractUpdate(targetStanzaId: targetStanzaId));
+}
+
 void _dispatchUpdate(ThreadKey threadKey, _ThreadUpdate update) {
   final list = _threadUpdaters[threadKey];
   if (list == null) return;
@@ -431,6 +475,11 @@ class _EditUpdate extends _ThreadUpdate {
   final String newBody;
 }
 
+class _RetractUpdate extends _ThreadUpdate {
+  _RetractUpdate({required this.targetStanzaId});
+  final String targetStanzaId;
+}
+
 /// Clears family caches, the appender registry, and bumps the cache
 /// generation counter — old rearch-container-managed capsules that
 /// snapshot the previous generation will drop future events instead of
@@ -446,12 +495,15 @@ void resetMessagesCapsuleCache() {
 
 Message _toChatUiMessage(ChatMessage cm, String authorId) {
   final a = cm.attachment;
+  final MessageStatus? status =
+      cm.isMine && cm.pendingAck ? MessageStatus.sending : null;
   if (a != null && a.isImage) {
     return Message.image(
       id: cm.id,
       authorId: authorId,
       createdAt: cm.sentAt,
-      sentAt: cm.isMine ? cm.sentAt : null,
+      sentAt: cm.isMine && !cm.pendingAck ? cm.sentAt : null,
+      status: status,
       source: a.downloadUrl,
       text: cm.body,
       size: a.size,
@@ -464,7 +516,8 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
       id: cm.id,
       authorId: authorId,
       createdAt: cm.sentAt,
-      sentAt: cm.isMine ? cm.sentAt : null,
+      sentAt: cm.isMine && !cm.pendingAck ? cm.sentAt : null,
+      status: status,
       source: a.downloadUrl,
       name: a.fileName,
       mimeType: a.mimeType,
@@ -477,7 +530,8 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
     id: cm.id,
     authorId: authorId,
     createdAt: cm.sentAt,
-    sentAt: cm.isMine ? cm.sentAt : null,
+    sentAt: cm.isMine && !cm.pendingAck ? cm.sentAt : null,
+    status: status,
     text: cm.body,
     replyToMessageId: cm.replyToStanzaId,
     reactions: cm.reactions,
@@ -498,6 +552,10 @@ FileDescriptor? _fromXmpp(XmppAttachment? a) {
 
 /// Finds the message with [stanzaId] and calls `updateMessage` with an
 /// upgraded status timeline. No-op if the id isn't in the controller.
+///
+/// Also collapses any lingering `MessageStatus.sending` state and stamps
+/// [Message.sentAt], because a delivery receipt implies the server
+/// accepted the message (i.e. it is at least "sent").
 Future<void> _stampStatus(
   InMemoryChatController controller, {
   required String stanzaId,
@@ -511,16 +569,22 @@ Future<void> _stampStatus(
   switch (old) {
     case TextMessage m:
       updated = m.copyWith(
+        status: m.status == MessageStatus.sending ? null : m.status,
+        sentAt: m.sentAt ?? now,
         deliveredAt: delivered || seen ? (m.deliveredAt ?? now) : m.deliveredAt,
         seenAt: seen ? (m.seenAt ?? now) : m.seenAt,
       );
     case ImageMessage m:
       updated = m.copyWith(
+        status: m.status == MessageStatus.sending ? null : m.status,
+        sentAt: m.sentAt ?? now,
         deliveredAt: delivered || seen ? (m.deliveredAt ?? now) : m.deliveredAt,
         seenAt: seen ? (m.seenAt ?? now) : m.seenAt,
       );
     case FileMessage m:
       updated = m.copyWith(
+        status: m.status == MessageStatus.sending ? null : m.status,
+        sentAt: m.sentAt ?? now,
         deliveredAt: delivered || seen ? (m.deliveredAt ?? now) : m.deliveredAt,
         seenAt: seen ? (m.seenAt ?? now) : m.seenAt,
       );
@@ -601,6 +665,42 @@ Map<String, List<String>> _reactionsOf(Message m) => switch (m) {
   FileMessage m => Map.of(m.reactions ?? const {}),
   _ => <String, List<String>>{},
 };
+
+/// XEP-0424 retract handler — drops the target message.
+Future<void> _applyRetract(
+  InMemoryChatController controller,
+  String targetStanzaId,
+) async {
+  final target = controller.messages
+      .where((m) => m.id == targetStanzaId)
+      .firstOrNull;
+  if (target == null) return;
+  await controller.removeMessage(target);
+}
+
+/// Server sent-ack — clears the "sending" status and stamps sentAt.
+Future<void> _stampSent(
+  InMemoryChatController controller, {
+  required String stanzaId,
+}) async {
+  final old = controller.messages
+      .where((m) => m.id == stanzaId)
+      .firstOrNull;
+  if (old == null) return;
+  final now = DateTime.now();
+  final Message updated;
+  switch (old) {
+    case TextMessage m when m.status == MessageStatus.sending:
+      updated = m.copyWith(status: null, sentAt: m.sentAt ?? now);
+    case ImageMessage m when m.status == MessageStatus.sending:
+      updated = m.copyWith(status: null, sentAt: m.sentAt ?? now);
+    case FileMessage m when m.status == MessageStatus.sending:
+      updated = m.copyWith(status: null, sentAt: m.sentAt ?? now);
+    default:
+      return;
+  }
+  await controller.updateMessage(old, updated);
+}
 
 void _registerAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
   _appenders.putIfAbsent(threadKey, () => []).add(fn);

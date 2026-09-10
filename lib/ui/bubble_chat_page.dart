@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 import 'package:flutter_chat_ui/flutter_chat_ui.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
@@ -11,6 +12,7 @@ import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import 'attachment_picker.dart';
+import 'chat_widgets.dart';
 
 class BubbleChatPage extends RearchConsumer {
   const BubbleChatPage({super.key, required this.bubble});
@@ -24,8 +26,11 @@ class BubbleChatPage extends RearchConsumer {
     final rosterAsync = use(rosterCapsule);
     final threadKey = '${bubble.id}@muc.${config.xmppDomain}';
     final controller = use(chatControllerCapsule(threadKey));
+    final input = use.textEditingController();
+    final (replyingTo, setReplyingTo) = use.state<Message?>(null);
+    final (editing, setEditing) = use.state<TextMessage?>(null);
 
-    // Join the MUC once per bubble; use.effect returns a no-op disposer.
+    // Join the MUC once per bubble.
     use.effect(() {
       actions.joinMuc(bubble);
       return null;
@@ -43,11 +48,100 @@ class BubbleChatPage extends RearchConsumer {
       for (final r in roster) {
         if (r.peer.id == id) return User(id: id, name: r.peer.display);
       }
-      // Fallback: search the bubble's own member list for a matching id.
       for (final m in bubble.members) {
         if (m.userId == id) return User(id: id, name: id);
       }
       return User(id: id, name: id);
+    }
+
+    Message? lookupTarget(String? id) {
+      if (id == null) return null;
+      for (final m in controller.messages) {
+        if (m.id == id) return m;
+      }
+      return null;
+    }
+
+    void beginEdit(TextMessage m) {
+      setEditing(m);
+      setReplyingTo(null);
+      input.text = m.text;
+      input.selection = TextSelection.fromPosition(
+        TextPosition(offset: input.text.length),
+      );
+    }
+
+    void beginReply(Message m) {
+      setReplyingTo(m);
+      setEditing(null);
+    }
+
+    void clearBanner() {
+      if (editing != null) input.clear();
+      setEditing(null);
+      setReplyingTo(null);
+    }
+
+    void toggleMyReaction(Message target, String emoji) {
+      final current = _reactionsOf(target);
+      final myEmojis = <String>{
+        for (final e in current.entries)
+          if (e.value.contains(currentUserId)) e.key,
+      };
+      if (myEmojis.contains(emoji)) {
+        myEmojis.remove(emoji);
+      } else {
+        myEmojis.add(emoji);
+      }
+      actions.reactToGroup(
+        bubble,
+        targetStanzaId: target.id,
+        emojis: myEmojis.toList(),
+      );
+    }
+
+    Future<void> onLongPress(
+      BuildContext ctx,
+      Message m, {
+      required int index,
+      required LongPressStartDetails details,
+    }) async {
+      final isMine = m.authorId == currentUserId;
+      final choice = await showMessageActions(
+        ctx,
+        target: m,
+        currentUserId: currentUserId,
+        allowEdit: isMine && m is TextMessage,
+        allowDelete: isMine,
+      );
+      if (choice == null) return;
+      switch (choice) {
+        case ReactChoice(:final emoji):
+          toggleMyReaction(m, emoji);
+        case ReplyChoice():
+          beginReply(m);
+        case EditChoice() when m is TextMessage:
+          beginEdit(m);
+        case CopyChoice() when m is TextMessage:
+          await Clipboard.setData(ClipboardData(text: m.text));
+        case DeleteChoice():
+          actions.retractGroup(bubble, targetStanzaId: m.id);
+        default:
+          break;
+      }
+    }
+
+    Widget? banner;
+    if (editing != null) {
+      banner = ChatEditBanner(
+        preview: previewOfMessage(editing),
+        onCancel: clearBanner,
+      );
+    } else if (replyingTo != null) {
+      banner = ChatReplyBanner(
+        preview: previewOfMessage(replyingTo),
+        onCancel: clearBanner,
+      );
     }
 
     return Scaffold(
@@ -62,31 +156,83 @@ class BubbleChatPage extends RearchConsumer {
           ],
         ),
       ),
-      body: Chat(
-        currentUserId: currentUserId,
-        resolveUser: resolveUser,
-        chatController: controller,
-        builders: Builders(
-          imageMessageBuilder:
-              (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                  InlineImageBubble(message: msg, isSentByMe: isSentByMe),
-        ),
-        onAttachmentTap: () async {
-          final picked = await showAttachmentPicker(context);
-          if (picked == null) return;
-          await actions.sendGroupFile(
-            bubble,
-            bytes: picked.bytes,
-            fileName: picked.fileName,
-            mimeType: picked.mimeType,
-          );
-        },
-        onMessageSend: (text) {
-          final trimmed = text.trim();
-          if (trimmed.isEmpty) return;
-          actions.sendGroup(bubble, trimmed);
-        },
+      body: Column(
+        children: [
+          Expanded(
+            child: Chat(
+              currentUserId: currentUserId,
+              resolveUser: resolveUser,
+              chatController: controller,
+              builders: Builders(
+                composerBuilder: (ctx) =>
+                    Composer(textEditingController: input),
+                textMessageBuilder:
+                    (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                        wrapChatBubble(
+                          message: msg,
+                          isSentByMe: isSentByMe,
+                          currentUserId: currentUserId,
+                          replyTarget: lookupTarget(msg.replyToMessageId),
+                          reactions: msg.reactions,
+                          onReactionTap: (e) => toggleMyReaction(msg, e),
+                          child: SimpleTextMessage(message: msg, index: index),
+                        ),
+                imageMessageBuilder:
+                    (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                        wrapChatBubble(
+                          message: msg,
+                          isSentByMe: isSentByMe,
+                          currentUserId: currentUserId,
+                          replyTarget: lookupTarget(msg.replyToMessageId),
+                          reactions: msg.reactions,
+                          onReactionTap: (e) => toggleMyReaction(msg, e),
+                          child: InlineImageBubble(
+                            message: msg,
+                            isSentByMe: isSentByMe,
+                          ),
+                        ),
+              ),
+              onAttachmentTap: () async {
+                final picked = await showAttachmentPicker(context);
+                if (picked == null) return;
+                await actions.sendGroupFile(
+                  bubble,
+                  bytes: picked.bytes,
+                  fileName: picked.fileName,
+                  mimeType: picked.mimeType,
+                );
+              },
+              onMessageLongPress: onLongPress,
+              onMessageSend: (text) {
+                final trimmed = text.trim();
+                if (trimmed.isEmpty) return;
+                if (editing != null) {
+                  actions.editGroup(
+                    bubble,
+                    originalStanzaId: editing.id,
+                    newBody: trimmed,
+                  );
+                } else {
+                  actions.sendGroup(
+                    bubble,
+                    trimmed,
+                    replyToStanzaId: replyingTo?.id,
+                  );
+                }
+                clearBanner();
+              },
+            ),
+          ),
+          if (banner != null) banner,
+        ],
       ),
     );
   }
 }
+
+Map<String, List<String>> _reactionsOf(Message m) => switch (m) {
+  TextMessage m => Map.of(m.reactions ?? const {}),
+  ImageMessage m => Map.of(m.reactions ?? const {}),
+  FileMessage m => Map.of(m.reactions ?? const {}),
+  _ => <String, List<String>>{},
+};
