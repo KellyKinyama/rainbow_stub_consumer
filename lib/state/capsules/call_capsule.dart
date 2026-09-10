@@ -28,11 +28,8 @@ class CallSnapshot {
   final CallDirection direction;
   final CallState state;
 
-  CallSnapshot copyWith({CallState? state}) => CallSnapshot(
-    sid: sid,
-    direction: direction,
-    state: state ?? this.state,
-  );
+  CallSnapshot copyWith({CallState? state}) =>
+      CallSnapshot(sid: sid, direction: direction, state: state ?? this.state);
 }
 
 /// Handle over an active [RtcSession] — the capsule owns the actual
@@ -102,11 +99,7 @@ Capsule<AsyncSnapshot<CallController>> callCapsule({
               snap = next;
               result.value = AsyncSnapshot<CallController>.withData(
                 ConnectionState.active,
-                CallController(
-                  snapshot: next,
-                  session: s,
-                  dispose: dispose,
-                ),
+                CallController(snapshot: next, session: s, dispose: dispose),
               );
             }
 

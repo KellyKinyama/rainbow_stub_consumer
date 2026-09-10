@@ -11,9 +11,9 @@ import 'package:rearch/rearch.dart';
 
 class _FakeSession implements RtcSession {
   _FakeSession({required CallDirection direction})
-      : _state = direction == CallDirection.outgoing
-            ? CallState.dialing
-            : CallState.ringing {
+    : _state = direction == CallDirection.outgoing
+          ? CallState.dialing
+          : CallState.ringing {
     _events.add(RtcStateChanged(_state));
   }
 
@@ -41,7 +41,10 @@ class _FakeSession implements RtcSession {
       'fake-answer';
 
   @override
-  Future<void> setRemoteDescription(String sdp, {required bool isOffer}) async {}
+  Future<void> setRemoteDescription(
+    String sdp, {
+    required bool isOffer,
+  }) async {}
 
   @override
   Future<void> addRemoteIceCandidate({
@@ -97,18 +100,14 @@ void main() {
       expect(snap2.data!.snapshot.state, CallState.dialing);
       expect(adapter.sessions, hasLength(1));
 
-      adapter.sessions.single.push(
-        const RtcStateChanged(CallState.connecting),
-      );
+      adapter.sessions.single.push(const RtcStateChanged(CallState.connecting));
       await Future<void>.delayed(Duration.zero);
       final snap3 = container.read(
         callCapsule(sid: 'sid-1', direction: CallDirection.outgoing),
       );
       expect(snap3.data!.snapshot.state, CallState.connecting);
 
-      adapter.sessions.single.push(
-        const RtcStateChanged(CallState.connected),
-      );
+      adapter.sessions.single.push(const RtcStateChanged(CallState.connected));
       await Future<void>.delayed(Duration.zero);
       final snap4 = container.read(
         callCapsule(sid: 'sid-1', direction: CallDirection.outgoing),

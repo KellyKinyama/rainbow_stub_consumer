@@ -50,11 +50,13 @@ class _FlutterWebRtcSession implements RtcSession {
   }
 
   void _wire() {
-    _emit(RtcStateChanged(
-      direction == CallDirection.outgoing
-          ? CallState.dialing
-          : CallState.ringing,
-    ));
+    _emit(
+      RtcStateChanged(
+        direction == CallDirection.outgoing
+            ? CallState.dialing
+            : CallState.ringing,
+      ),
+    );
 
     pc.onIceCandidate = (candidate) {
       final c = candidate.candidate;
