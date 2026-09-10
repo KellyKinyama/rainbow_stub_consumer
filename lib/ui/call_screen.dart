@@ -146,7 +146,10 @@ class _RemoteVideoState extends State<_RemoteVideo> {
     if (_boundStream == null || !widget.call.hasVideo) {
       return _AudioAvatar(call: widget.call);
     }
-    return RTCVideoView(_renderer, objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover);
+    return RTCVideoView(
+      _renderer,
+      objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+    );
   }
 }
 

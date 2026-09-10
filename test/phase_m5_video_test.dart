@@ -80,7 +80,10 @@ class _FakeSession implements RtcSession {
   }
 
   @override
-  Future<void> setRemoteDescription(String sdp, {required bool isOffer}) async {}
+  Future<void> setRemoteDescription(
+    String sdp, {
+    required bool isOffer,
+  }) async {}
 
   @override
   Future<void> addRemoteIceCandidate({
@@ -226,30 +229,27 @@ void main() {
     },
   );
 
-  test(
-    'session exposes setCameraEnabled + switchCamera controls',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final manager = _makeManager(xmpp: xmpp, adapter: adapter);
+  test('session exposes setCameraEnabled + switchCamera controls', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final manager = _makeManager(xmpp: xmpp, adapter: adapter);
 
-      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
-      final sid = await manager.startCall(
-        peer: peer,
-        peerFullJid: 'bob@localhost/laptop',
-        video: true,
-      );
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+      video: true,
+    );
 
-      final session = manager.calls[sid]!.session;
-      await session.setCameraEnabled(false);
-      await session.setCameraEnabled(true);
-      await session.switchCamera();
+    final session = manager.calls[sid]!.session;
+    await session.setCameraEnabled(false);
+    await session.setCameraEnabled(true);
+    await session.switchCamera();
 
-      final fake = adapter.sessions.single;
-      expect(fake.cameraEnabledCalls, 2);
-      expect(fake.lastCameraEnabled, 1);
-      expect(fake.switchCameraCalls, 1);
-      await manager.dispose();
-    },
-  );
+    final fake = adapter.sessions.single;
+    expect(fake.cameraEnabledCalls, 2);
+    expect(fake.lastCameraEnabled, 1);
+    expect(fake.switchCameraCalls, 1);
+    await manager.dispose();
+  });
 }

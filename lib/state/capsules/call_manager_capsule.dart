@@ -12,6 +12,7 @@ import '../../rainbow/xmpp_client.dart';
 import 'auth_state_capsule.dart';
 import 'call_capsule.dart';
 import 'config_capsule.dart';
+import 'rest_capsule.dart';
 import 'roster_capsule.dart';
 import 'xmpp_capsule.dart';
 
@@ -37,6 +38,11 @@ class ActiveCall {
   CallState state;
   String? pendingRemoteSdp;
 
+  /// Timestamp of the first `CallState.connected` transition, if
+  /// any. Used to compute the call-log duration and to distinguish
+  /// answered vs missed/declined calls.
+  DateTime? connectedAt;
+
   /// Preferred label for the UI: display name if we've resolved one,
   /// otherwise the JID's local-part.
   String get displayLabel => peerDisplayName ?? peerId;
@@ -61,11 +67,15 @@ class CallManager extends ChangeNotifier {
     required String Function() sidGen,
     PeerNameResolver? resolvePeerName,
     Ringer? ringer,
+    Future<void> Function(CallLogPayload)? writeCallLog,
+    Duration disconnectedGrace = const Duration(seconds: 20),
   }) : _adapter = adapter,
        _xmpp = xmpp,
        _sidGen = sidGen,
        _resolvePeerName = resolvePeerName,
-       _ringer = ringer ?? HapticRinger() {
+       _ringer = ringer ?? HapticRinger(),
+       _writeCallLog = writeCallLog,
+       _disconnectedGrace = disconnectedGrace {
     _sub = _xmpp.events
         .where((e) => e is XmppJingle)
         .cast<XmppJingle>()
@@ -75,6 +85,9 @@ class CallManager extends ChangeNotifier {
   final WebRtcAdapter _adapter;
   final PeerNameResolver? _resolvePeerName;
   final Ringer _ringer;
+  final Future<void> Function(CallLogPayload)? _writeCallLog;
+  final Duration _disconnectedGrace;
+  final Map<String, Timer> _disconnectedTimers = {};
   bool _paused = false;
   final RainbowXmppClient _xmpp;
   final String Function() _sidGen;
@@ -161,16 +174,66 @@ class CallManager extends ChangeNotifier {
 
   Future<void> _dropCall(String sid) async {
     final call = _calls.remove(sid);
+    _disconnectedTimers.remove(sid)?.cancel();
     await _sessionSubs.remove(sid)?.cancel();
     await call?.session.close();
+    if (call != null) unawaited(_recordCallLog(call));
     _updateRinger();
     notifyListeners();
+  }
+
+  Future<void> _recordCallLog(ActiveCall call) async {
+    if (_writeCallLog == null) return;
+    final now = DateTime.now();
+    final started = call.connectedAt ?? now;
+    final durationMs = call.connectedAt == null
+        ? 0
+        : now.difference(call.connectedAt!).inMilliseconds;
+    final state = _classifyState(call);
+    try {
+      await _writeCallLog(
+        CallLogPayload(
+          peerJid: call.peerFullJid,
+          peerDisplay: call.peerDisplayName,
+          direction: call.direction == CallDirection.outgoing
+              ? 'outgoing'
+              : 'incoming',
+          state: state,
+          media: call.hasVideo ? 'video' : 'audio',
+          durationMs: durationMs,
+          startedAt: started,
+        ),
+      );
+    } on Object {
+      // Best-effort — a failed call-log write shouldn't spam the UI.
+    }
+  }
+
+  String _classifyState(ActiveCall call) {
+    if (call.connectedAt != null) return 'answered';
+    if (call.state == CallState.failed) return 'failed';
+    return call.direction == CallDirection.incoming ? 'missed' : 'declined';
   }
 
   void _wireSession(ActiveCall call) {
     _sessionSubs[call.sid] = call.session.events.listen((e) {
       if (e is RtcStateChanged) {
         call.state = e.state;
+        if (e.state == CallState.connected) {
+          call.connectedAt ??= DateTime.now();
+          _disconnectedTimers.remove(call.sid)?.cancel();
+        } else if (e.state == CallState.disconnected) {
+          // Give the peer connection a grace window to recover before
+          // we auto-hang up. Timer restarts if we bounce back.
+          _disconnectedTimers[call.sid]?.cancel();
+          _disconnectedTimers[call.sid] = Timer(_disconnectedGrace, () {
+            if (_calls.containsKey(call.sid)) {
+              unawaited(hangUp(call.sid));
+            }
+          });
+        } else if (e.state == CallState.failed) {
+          _disconnectedTimers.remove(call.sid)?.cancel();
+        }
         _updateRinger();
         notifyListeners();
         if (e.state == CallState.ended) {
@@ -284,6 +347,10 @@ class CallManager extends ChangeNotifier {
   @override
   Future<void> dispose() async {
     _ringer.stop();
+    for (final t in _disconnectedTimers.values) {
+      t.cancel();
+    }
+    _disconnectedTimers.clear();
     await _sub?.cancel();
     for (final s in _sessionSubs.values) {
       await s.cancel();
@@ -301,6 +368,7 @@ CallManager callManagerCapsule(CapsuleHandle use) {
   final adapter = use(webRtcAdapterCapsule);
   final xmpp = use(xmppCapsule);
   final ringer = use(ringerCapsule);
+  final rest = use(restCapsule);
   // Reads are for lifecycle only — auth+config are supplied so the
   // manager can be torn down + rebuilt when the user changes.
   final me = use(authCapsule).me;
@@ -317,6 +385,20 @@ CallManager callManagerCapsule(CapsuleHandle use) {
     return null;
   }
 
+  Future<void> writeCallLog(CallLogPayload p) async {
+    final userId = me?.id;
+    if (userId == null) return;
+    await rest.insertCallLog(
+      userId: userId,
+      peerJid: p.peerJid,
+      peerDisplay: p.peerDisplay,
+      direction: p.direction,
+      state: p.state,
+      media: p.media,
+      durationMs: p.durationMs,
+    );
+  }
+
   return use.disposable<CallManager>(
     () => CallManager(
       adapter: adapter,
@@ -324,6 +406,7 @@ CallManager callManagerCapsule(CapsuleHandle use) {
       sidGen: _newSid,
       resolvePeerName: resolvePeerName,
       ringer: ringer,
+      writeCallLog: writeCallLog,
     ),
     (m) => m.dispose(),
     [adapter, xmpp, me?.id],
@@ -334,6 +417,27 @@ CallManager callManagerCapsule(CapsuleHandle use) {
 /// `container.mock(ringerCapsule)`. The production default rings
 /// via haptic feedback; a test can inject a no-op or scripted fake.
 Ringer ringerCapsule(CapsuleHandle use) => HapticRinger();
+
+/// Payload written by the CallManager to REST when a call ends.
+/// Exposed for tests; not intended for UI consumers.
+class CallLogPayload {
+  const CallLogPayload({
+    required this.peerJid,
+    required this.peerDisplay,
+    required this.direction,
+    required this.state,
+    required this.media,
+    required this.durationMs,
+    required this.startedAt,
+  });
+  final String peerJid;
+  final String? peerDisplay;
+  final String direction;
+  final String state;
+  final String media;
+  final int durationMs;
+  final DateTime startedAt;
+}
 
 String _newSid() => 'sid-${DateTime.now().microsecondsSinceEpoch}';
 

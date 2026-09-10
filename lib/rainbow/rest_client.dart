@@ -179,6 +179,32 @@ class RainbowRestClient {
     _check(r);
   }
 
+  /// Records a completed call in the server-side history so the call
+  /// log tab reflects it. Non-fatal — the caller may fire-and-forget.
+  Future<void> insertCallLog({
+    required String userId,
+    required String peerJid,
+    String? peerDisplay,
+    required String direction,
+    required String state,
+    String media = 'audio',
+    int durationMs = 0,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/$userId/calllogs'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({
+        'peerJid': peerJid,
+        ?'peerDisplay': peerDisplay,
+        'direction': direction,
+        'state': state,
+        'media': media,
+        'durationMs': durationMs,
+      }),
+    );
+    _check(r);
+  }
+
   /// Two-step upload — creates a descriptor, then PUTs the bytes. Returns
   /// the descriptor with the `downloadUrl` filled in.
   Future<FileDescriptor> uploadFile({
