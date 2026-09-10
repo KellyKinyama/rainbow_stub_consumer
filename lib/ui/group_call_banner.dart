@@ -154,7 +154,9 @@ class _InCallStrip extends StatelessWidget {
             children: [
               const Icon(Icons.groups),
               const SizedBox(width: 12),
-              const Expanded(child: Text('You are in this group call · tap to open')),
+              const Expanded(
+                child: Text('You are in this group call · tap to open'),
+              ),
               OutlinedButton.icon(
                 icon: const Icon(Icons.call_end),
                 label: const Text('Leave'),

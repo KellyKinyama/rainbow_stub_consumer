@@ -32,35 +32,57 @@ class AppConfig {
   /// controls on bubbles.
   bool get groupCallsEnabled => sfuUrl != null;
 
-  /// Default dev config — targets a local rainbow-stub on :8443.
-  /// On the Android emulator swap `localhost` for `10.0.2.2`.
+  /// Default dev config — targets a local rainbow-stub. Endpoints can
+  /// be overridden at build time via `--dart-define` flags so real
+  /// devices can point at the LAN without touching source:
+  ///
+  /// ```sh
+  /// flutter run \
+  ///   --dart-define=STUB_SCHEME=http \
+  ///   --dart-define=STUB_HOST=192.168.1.42 \
+  ///   --dart-define=STUB_PORT=8080 \
+  ///   --dart-define=SFU_URL=ws://192.168.1.42:7000/ws
+  /// ```
+  ///
+  /// See `docs/live-smoke-test.md` for the full runbook.
   static AppConfig get dev {
     final scheme = _defaultScheme();
     final host = _defaultHost();
+    final port = _defaultPort();
+    final sfu = const String.fromEnvironment('SFU_URL');
     return AppConfig(
-      baseUrl: Uri.parse('$scheme://$host:8443'),
+      baseUrl: Uri.parse('$scheme://$host:$port'),
       wsUrl: Uri.parse(
-        '${scheme == 'https' ? 'wss' : 'ws'}://$host:8443/websocket',
+        '${scheme == 'https' ? 'wss' : 'ws'}://$host:$port/websocket',
       ),
       // Matches the appId/secret shipped with the RN sample and seeded on
       // the stub.
       appAuth:
           'Basic NjVjNjgxYzAxYzhmMTFlOWFkZDg5MzJiMzU4ZWY4MWQ6VVlkdTN3Q1hUZGZ5akltaFVSbklrWjB0YWM1SjlYU0xzeklLQlJVVVdWQjM1YjZuVDNmV1YyQmhBR2hvamRCUQ==',
       xmppDomain: host,
+      sfuUrl: sfu.isEmpty ? null : Uri.parse(sfu),
     );
   }
 
   static String _defaultScheme() {
-    // Web builds must use the same scheme as the page; keep https to match
-    // the stub's TLS default.
-    return kIsWeb ? 'https' : 'https';
+    const override = String.fromEnvironment('STUB_SCHEME');
+    if (override.isNotEmpty) return override;
+    return 'https';
   }
 
   static String _defaultHost() {
+    const override = String.fromEnvironment('STUB_HOST');
+    if (override.isNotEmpty) return override;
     if (kIsWeb) return 'localhost';
     // TargetPlatform.android would be 10.0.2.2 — we can't tell without a
     // dart:io check, but callers on Android should override via
-    // AppConfig(...).
+    // --dart-define=STUB_HOST=... (see docs/live-smoke-test.md).
     return 'localhost';
+  }
+
+  static String _defaultPort() {
+    const override = String.fromEnvironment('STUB_PORT');
+    if (override.isNotEmpty) return override;
+    return '8443';
   }
 }

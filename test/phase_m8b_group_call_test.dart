@@ -106,6 +106,7 @@ class _FakeSession implements RtcSession {
   Future<void> switchCamera() async {
     switchCameraCalls++;
   }
+
   @override
   Future<void> close() async {
     closed = true;

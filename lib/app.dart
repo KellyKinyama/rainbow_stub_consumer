@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
 import 'package:rearch/rearch.dart';
@@ -5,6 +6,7 @@ import 'package:rearch/rearch.dart';
 import 'state/capsules/auth_state_capsule.dart';
 import 'state/capsules/call_manager_capsule.dart';
 import 'state/models/auth_state.dart';
+import 'ui/diagnostics_overlay.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
 
@@ -33,9 +35,16 @@ class _AuthGate extends RearchConsumer {
   @override
   Widget build(BuildContext context, WidgetHandle use) {
     final auth = use(authCapsule);
-    return auth is SignedIn
+    final home = auth is SignedIn
         ? const _CallLifecycleWatcher(child: HomePage())
         : const LoginPage();
+    if (!kDebugMode) return home;
+    return Stack(
+      children: [
+        Positioned.fill(child: home),
+        const DiagnosticsOverlay(),
+      ],
+    );
   }
 }
 

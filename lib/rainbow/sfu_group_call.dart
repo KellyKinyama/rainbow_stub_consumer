@@ -118,8 +118,7 @@ class SfuGroupCallSession {
       _session?.setCameraEnabled(enabled) ?? Future.value();
 
   /// Cycles between front and rear cameras.
-  Future<void> switchCamera() =>
-      _session?.switchCamera() ?? Future.value();
+  Future<void> switchCamera() => _session?.switchCamera() ?? Future.value();
 
   Future<void> close() async {
     if (_closed) return;

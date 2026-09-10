@@ -139,9 +139,9 @@ class _EmptyState extends StatelessWidget {
           const SizedBox(height: 16),
           Text(
             'Waiting for others to join…',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: Colors.white70,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(color: Colors.white70),
           ),
         ],
       ),
