@@ -1,120 +1,86 @@
 import 'package:xml/xml.dart';
 
-/// Pragmatic Jingle content-XML codec.
+/// Minimal SDP ↔ Jingle codec used for M-3 loopback calling.
 ///
-/// The M-3 loopback demo tunnels a full SDP blob inside a
-/// `<description>` element rather than mapping every SDP line to a
-/// XEP-0167 element. That keeps this phase small and lets us round-
-/// trip anything `flutter_webrtc` produces (Opus, VP8, DTLS-SRTP,
-/// bundle groups, etc.) without a large mapping table. The trade-off
-/// is that the stub is no longer wire-compatible with real Rainbow or
-/// ejabberd — but the roadmap only promises loopback / dev-network
-/// interop for M-3. A future phase can swap this out for a proper
-/// XEP-0167 mapper.
-class SdpToJingle {
-  /// Builds a Jingle content element wrapping [sdp] inside a
-  /// `<description>/<sdp>` pair, plus an empty ICE-UDP transport.
-  static String encode({
-    required String sdp,
-    required String contentName,
-    required String creator,
-    required String media,
-  }) {
-    final desc = XmlElement(XmlName('description'), [
-      XmlAttribute(XmlName('xmlns'), 'urn:xmpp:jingle:apps:rtp:1'),
-      XmlAttribute(XmlName('media'), media),
-    ], [
-      XmlElement(XmlName('sdp'), const [], [XmlText(sdp)]),
-    ]);
-    final transport = XmlElement(XmlName('transport'), [
-      XmlAttribute(XmlName('xmlns'), 'urn:xmpp:jingle:transports:ice-udp:1'),
-    ]);
-    final content = XmlElement(XmlName('content'), [
-      XmlAttribute(XmlName('name'), contentName),
-      XmlAttribute(XmlName('creator'), creator),
-    ], [desc, transport]);
-    return content.toXmlString();
+/// XEP-0166 says a Jingle `<jingle>` element contains one or more
+/// `<content>` children, each with a `<description>` (media) and a
+/// `<transport>` (candidates). XEP-0167 spells out a full mapping
+/// between SDP `m=`/`a=` lines and Jingle child elements — that
+/// mapping is genuinely fiddly, so for M-3 we take a shortcut: raw
+/// SDP travels in a custom `urn:rainbow:jingle:sdp:1` element inside
+/// the `<content>`. The outer XEP-0166 shape is preserved so a real
+/// server can still route by `sid`/`action`; only the inner payload
+/// is proprietary. M-6+ or a real-server integration will replace
+/// this with a proper XEP-0167 encoder.
+class JingleSdpCodec {
+  static const String rainbowSdpNs = 'urn:rainbow:jingle:sdp:1';
+
+  /// Builds the `<content>` XML string that goes inside `<jingle>`
+  /// for a `session-initiate` or `session-accept`.
+  static String encodeContentWithSdp({required String sdp}) {
+    final safe = _cdata(sdp);
+    return '<content name="rtp" creator="initiator">'
+        '<rainbow-sdp xmlns="$rainbowSdpNs">'
+        '<![CDATA[$safe]]>'
+        '</rainbow-sdp>'
+        '</content>';
   }
 
-  /// Extracts the tunnelled SDP from the first content/description/sdp
-  /// nesting in [jingleXml]. Accepts either a full jingle payload or a
-  /// bare content element. Returns `null` if the payload isn't in the
-  /// expected shape.
-  static String? decode(String jingleXml) {
-    XmlElement root;
-    try {
-      root = XmlDocument.parse(jingleXml).rootElement;
-    } on XmlException {
-      return null;
-    }
-    final contents = root.name.local == 'content'
-        ? [root]
-        : _childrenNamed(root, 'content');
-    for (final content in contents) {
-      for (final desc in _childrenNamed(content, 'description')) {
-        for (final sdp in _childrenNamed(desc, 'sdp')) {
-          return sdp.innerText;
-        }
-      }
-    }
-    return null;
-  }
-
-  /// Builds a transport element with a single candidate line and
-  /// wraps it in a content element. Trickle-friendly.
-  static String encodeCandidate({
+  /// Builds the `<content>` XML for a `transport-info`. [candidate] is
+  /// the raw SDP candidate line (`candidate:…`).
+  static String encodeCandidateContent({
     required String candidate,
     String? sdpMid,
     int? sdpMLineIndex,
-    String contentName = 'audio',
   }) {
-    final cand = XmlElement(XmlName('candidate'), [
-      XmlAttribute(XmlName('sdp'), candidate),
-      if (sdpMid != null) XmlAttribute(XmlName('sdpMid'), sdpMid),
-      if (sdpMLineIndex != null)
-        XmlAttribute(XmlName('sdpMLineIndex'), '$sdpMLineIndex'),
-    ]);
-    final transport = XmlElement(XmlName('transport'), [
-      XmlAttribute(XmlName('xmlns'), 'urn:xmpp:jingle:transports:ice-udp:1'),
-    ], [cand]);
-    final content = XmlElement(XmlName('content'), [
-      XmlAttribute(XmlName('name'), contentName),
-      XmlAttribute(XmlName('creator'), 'initiator'),
-    ], [transport]);
-    return content.toXmlString();
+    final mid = sdpMid == null ? '' : ' sdp-mid="${_attr(sdpMid)}"';
+    final idx = sdpMLineIndex == null
+        ? ''
+        : ' sdp-m-line-index="$sdpMLineIndex"';
+    return '<content name="rtp" creator="initiator">'
+        '<rainbow-candidate xmlns="$rainbowSdpNs" '
+        'line="${_attr(candidate)}"$mid$idx/>'
+        '</content>';
   }
 
-  /// Inverse of [encodeCandidate]. Accepts either a `<jingle>` payload
-  /// or a bare `<content>` element.
+  /// Extracts the raw SDP from the peer's `<jingle>` payload
+  /// (delivered as a full XML string on [XmppJingle.jingleXml]).
+  /// Returns `null` if no `<rainbow-sdp>` element is present.
+  static String? decodeSdp(String jingleXml) {
+    final doc = XmlDocument.parse(jingleXml);
+    final sdp = doc.rootElement.findAllElements(
+      'rainbow-sdp',
+      namespace: rainbowSdpNs,
+    );
+    if (sdp.isEmpty) return null;
+    return sdp.first.innerText;
+  }
+
+  /// Extracts a candidate from a `transport-info` `<jingle>` payload.
   static ({String candidate, String? sdpMid, int? sdpMLineIndex})?
-      decodeCandidate(String jingleXml) {
-    XmlElement root;
-    try {
-      root = XmlDocument.parse(jingleXml).rootElement;
-    } on XmlException {
-      return null;
-    }
-    final contents = root.name.local == 'content'
-        ? [root]
-        : _childrenNamed(root, 'content');
-    for (final content in contents) {
-      for (final transport in _childrenNamed(content, 'transport')) {
-        for (final cand in _childrenNamed(transport, 'candidate')) {
-          final s = cand.getAttribute('sdp');
-          if (s == null || s.isEmpty) continue;
-          return (
-            candidate: s,
-            sdpMid: cand.getAttribute('sdpMid'),
-            sdpMLineIndex: int.tryParse(
-              cand.getAttribute('sdpMLineIndex') ?? '',
-            ),
-          );
-        }
-      }
-    }
-    return null;
+  decodeCandidate(String jingleXml) {
+    final doc = XmlDocument.parse(jingleXml);
+    final el = doc.rootElement.findAllElements(
+      'rainbow-candidate',
+      namespace: rainbowSdpNs,
+    );
+    if (el.isEmpty) return null;
+    final line = el.first.getAttribute('line');
+    if (line == null) return null;
+    final mid = el.first.getAttribute('sdp-mid');
+    final idxRaw = el.first.getAttribute('sdp-m-line-index');
+    final idx = idxRaw == null ? null : int.tryParse(idxRaw);
+    return (candidate: line, sdpMid: mid, sdpMLineIndex: idx);
   }
-}
 
-Iterable<XmlElement> _childrenNamed(XmlElement el, String local) =>
-    el.children.whereType<XmlElement>().where((c) => c.name.local == local);
+  // XML doesn't allow "]]>" inside a CDATA section. Split it if the
+  // SDP ever contains that sequence (SDP won't in practice, but the
+  // guard costs nothing).
+  static String _cdata(String s) => s.replaceAll(']]>', ']]]]><![CDATA[>');
+
+  static String _attr(String s) => s
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+}

@@ -1,20 +1,94 @@
-// Phase M-3a acceptance — CallManager drives a fake SIP call between
-// two peers using two fake WebRtcAdapters + a fake XmppClient that
-// swaps stanzas between them. Also covers the SdpToJingle codec.
+// Phase M-3 acceptance — CallManager glues XmppJingle events to the
+// M-2 WebRtcAdapter. Fake XMPP + fake adapter drive:
+//   1. startCall → session-initiate sent with SDP wrapped by
+//      JingleSdpCodec.
+//   2. Local ICE candidate → transport-info sent.
+//   3. Inbound session-accept → remote SDP applied.
+//   4. Inbound transport-info → remote candidate applied.
+//   5. Inbound session-terminate → local session closed.
+//   6. Inbound session-initiate → incoming ActiveCall registered with
+//      pendingRemoteSdp populated.
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rainbow_stub_consumer/config.dart';
 import 'package:rainbow_stub_consumer/rainbow/models.dart';
+import 'package:rainbow_stub_consumer/rainbow/rest_client.dart';
 import 'package:rainbow_stub_consumer/rainbow/sdp_to_jingle.dart';
 import 'package:rainbow_stub_consumer/rainbow/webrtc_adapter.dart';
 import 'package:rainbow_stub_consumer/rainbow/xmpp_client.dart';
+import 'package:rainbow_stub_consumer/state/capsules/auth_controller_capsule.dart';
+import 'package:rainbow_stub_consumer/state/capsules/call_capsule.dart';
 import 'package:rainbow_stub_consumer/state/capsules/call_manager_capsule.dart';
+import 'package:rainbow_stub_consumer/state/capsules/rest_capsule.dart';
+import 'package:rainbow_stub_consumer/state/capsules/xmpp_capsule.dart';
+import 'package:rearch/rearch.dart';
+
+class _FakeRest extends RainbowRestClient {
+  _FakeRest() : super(AppConfig.dev);
+
+  @override
+  Future<LoginResult> login(String email, String password) async => LoginResult(
+    token: 'tkn',
+    expiresIn: 3600,
+    loggedInUser: RainbowUser(id: 'alice', loginEmail: email),
+  );
+
+  @override
+  Future<void> logout() async {}
+
+  @override
+  void close() {}
+}
+
+class _FakeXmpp extends RainbowXmppClient {
+  _FakeXmpp() : super(wsUrl: Uri.parse('ws://x/'), domain: 'localhost');
+  final _events = StreamController<XmppEvent>.broadcast();
+  final List<({String to, String action, String sid, String content})>
+  sentJingles = [];
+
+  @override
+  Stream<XmppEvent> get events => _events.stream;
+
+  @override
+  String get fullJid => 'alice@localhost/flutter';
+
+  @override
+  Future<void> connect({
+    required String email,
+    required String saslPassword,
+    String resource = 'flutter',
+  }) async {}
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  String sendJingle({
+    required String toFullJid,
+    required String action,
+    required String sid,
+    required String contentXml,
+    String? initiator,
+    String? responder,
+  }) {
+    sentJingles.add((
+      to: toFullJid,
+      action: action,
+      sid: sid,
+      content: contentXml,
+    ));
+    return 'iq-fake';
+  }
+
+  void pushIncoming(XmppEvent e) => _events.add(e);
+}
 
 class _FakeSession implements RtcSession {
   _FakeSession({required this.direction})
-      : state = direction == CallDirection.outgoing
-            ? CallState.dialing
-            : CallState.ringing {
+    : state = direction == CallDirection.outgoing
+          ? CallState.dialing
+          : CallState.ringing {
     _events.add(RtcStateChanged(state));
   }
 
@@ -22,13 +96,12 @@ class _FakeSession implements RtcSession {
   final _events = StreamController<RtcSessionEvent>.broadcast();
   @override
   CallState state;
-  String? remoteSdp;
-  bool isOfferRemote = false;
-  final List<String> remoteCandidates = [];
+  final remoteSdps = <({String sdp, bool isOffer})>[];
+  final remoteCandidates =
+      <({String candidate, String? sdpMid, int? sdpMLineIndex})>[];
+  int offersCreated = 0;
+  int answersCreated = 0;
   bool closed = false;
-
-  @override
-  Stream<RtcSessionEvent> get events => _events.stream;
 
   void push(RtcSessionEvent e) {
     if (e is RtcStateChanged) state = e.state;
@@ -36,17 +109,23 @@ class _FakeSession implements RtcSession {
   }
 
   @override
-  Future<String> createOffer({bool audio = true, bool video = false}) async =>
-      _mockSdp('offer-${_hash()}');
+  Stream<RtcSessionEvent> get events => _events.stream;
 
   @override
-  Future<String> createAnswer({bool audio = true, bool video = false}) async =>
-      _mockSdp('answer-${_hash()}');
+  Future<String> createOffer({bool audio = true, bool video = false}) async {
+    offersCreated++;
+    return 'v=0\r\no=fake-offer\r\n';
+  }
+
+  @override
+  Future<String> createAnswer({bool audio = true, bool video = false}) async {
+    answersCreated++;
+    return 'v=0\r\no=fake-answer\r\n';
+  }
 
   @override
   Future<void> setRemoteDescription(String sdp, {required bool isOffer}) async {
-    remoteSdp = sdp;
-    isOfferRemote = isOffer;
+    remoteSdps.add((sdp: sdp, isOffer: isOffer));
   }
 
   @override
@@ -55,7 +134,11 @@ class _FakeSession implements RtcSession {
     String? sdpMid,
     int? sdpMLineIndex,
   }) async {
-    remoteCandidates.add(candidate);
+    remoteCandidates.add((
+      candidate: candidate,
+      sdpMid: sdpMid,
+      sdpMLineIndex: sdpMLineIndex,
+    ));
   }
 
   @override
@@ -63,15 +146,9 @@ class _FakeSession implements RtcSession {
 
   @override
   Future<void> close() async {
-    if (closed) return;
     closed = true;
     if (!_events.isClosed) await _events.close();
   }
-
-  static int _seed = 0;
-  int _hash() => _seed++;
-  String _mockSdp(String tag) =>
-      'v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\ns=$tag\r\nt=0 0\r\n';
 }
 
 class _FakeAdapter implements WebRtcAdapter {
@@ -85,225 +162,245 @@ class _FakeAdapter implements WebRtcAdapter {
   }
 }
 
-/// A pair of fake XMPP clients that route Jingle stanzas between each
-/// other so a single test can drive both sides of a call.
-class _FakeXmpp extends RainbowXmppClient {
-  _FakeXmpp({required String jid})
-      : _fullJid = jid,
-        super(wsUrl: Uri.parse('ws://x/'), domain: 'localhost');
-
-  final _events = StreamController<XmppEvent>.broadcast();
-  final String _fullJid;
-  _FakeXmpp? peer;
-
-  final List<({String action, String sid, String contentXml})> sent = [];
-
-  @override
-  Stream<XmppEvent> get events => _events.stream;
-
-  @override
-  String get fullJid => _fullJid;
-
-  @override
-  String sendJingle({
-    required String toFullJid,
-    required String action,
-    required String sid,
-    required String contentXml,
-    String? initiator,
-    String? responder,
-  }) {
-    sent.add((action: action, sid: sid, contentXml: contentXml));
-    // Wrap in a <jingle> element so the receiver's parser sees the
-    // real shape.
-    final jingleXml =
-        '<jingle xmlns="urn:xmpp:jingle:1" action="$action" sid="$sid">'
-        '$contentXml'
-        '</jingle>';
-    peer?._events.add(
-      XmppJingle(
-        fromFullJid: _fullJid,
-        iqId: 'iq-${sent.length}',
-        sid: sid,
-        action: action,
-        jingleXml: jingleXml,
-      ),
-    );
-    return 'iq-${sent.length}';
-  }
-
-  void close$() => _events.close();
-}
-
-CallManager _mkManager(
-  _FakeAdapter adapter,
-  _FakeXmpp xmpp, {
-  String myFullJid = 'alice@localhost/flutter',
-}) {
-  return CallManager(
-    adapter: adapter,
-    xmpp: xmpp,
-    xmppDomain: 'localhost',
-    myFullJid: myFullJid,
-    events: xmpp.events,
-  );
-}
-
 void main() {
-  group('SdpToJingle', () {
-    test('encode + decode round-trip preserves the SDP verbatim', () {
-      const sdp = 'v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\ns=t\r\nt=0 0\r\n';
-      final xml = SdpToJingle.encode(
-        sdp: sdp,
-        contentName: 'audio',
-        creator: 'initiator',
-        media: 'audio',
-      );
-      expect(xml, contains('media="audio"'));
-      final decoded = SdpToJingle.decode(xml);
-      expect(decoded, sdp);
-    });
+  late _FakeRest fakeRest;
+  late _FakeXmpp fakeXmpp;
+  late _FakeAdapter fakeAdapter;
+  late MockableContainer container;
 
-    test('candidate encode + decode round-trip', () {
-      final xml = SdpToJingle.encodeCandidate(
-        candidate: 'candidate:1 1 UDP 2130706431 10.0.0.1 54321 typ host',
-        sdpMid: '0',
-        sdpMLineIndex: 0,
-      );
-      final decoded = SdpToJingle.decodeCandidate(xml);
-      expect(decoded, isNotNull);
-      expect(decoded!.candidate, contains('10.0.0.1 54321'));
-      expect(decoded.sdpMid, '0');
-      expect(decoded.sdpMLineIndex, 0);
-    });
-
-    test('decode returns null on malformed payloads', () {
-      expect(SdpToJingle.decode('<not-a-content/>'), isNull);
-      expect(SdpToJingle.decode('gibberish'), isNull);
-    });
+  setUp(() async {
+    fakeRest = _FakeRest();
+    fakeXmpp = _FakeXmpp();
+    fakeAdapter = _FakeAdapter();
+    container = MockableContainer();
+    container.mock(restCapsule).apply((use) => fakeRest);
+    container.mock(xmppCapsule).apply((use) => fakeXmpp);
+    container.mock(webRtcAdapterCapsule).apply((use) => fakeAdapter);
+    final auth = container.read(authControllerCapsule);
+    await auth.signIn('alice@rainbow-stub.local', 'pw');
   });
 
-  group('CallManager', () {
-    test(
-      'startCall sends session-initiate carrying the SDP offer',
-      () async {
-        final aliceAdapter = _FakeAdapter();
-        final alice = _FakeXmpp(jid: 'alice@localhost/flutter');
-        final mgr = _mkManager(aliceAdapter, alice);
+  tearDown(() {
+    container.dispose();
+  });
 
-        final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
-        final sid = await mgr.startCall(peer);
+  test(
+    'startCall opens a session, sends session-initiate carrying the SDP',
+    () async {
+      final manager = container.read(callManagerCapsule);
+      final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
 
-        expect(alice.sent, hasLength(1));
-        expect(alice.sent.single.action, 'session-initiate');
-        expect(alice.sent.single.sid, sid);
-        final decoded = SdpToJingle.decode(alice.sent.single.contentXml);
-        expect(decoded, contains('s=offer-'));
+      final sid = await manager.startCall(
+        peer: peer,
+        peerFullJid: 'bob@localhost/laptop',
+      );
 
-        expect(mgr.activeCalls, hasLength(1));
-        expect(mgr.activeCalls.single.direction, CallDirection.outgoing);
+      expect(fakeAdapter.sessions, hasLength(1));
+      expect(fakeAdapter.sessions.single.direction, CallDirection.outgoing);
+      expect(fakeAdapter.sessions.single.offersCreated, 1);
 
-        mgr.dispose();
-      },
+      final initiate = fakeXmpp.sentJingles.singleWhere(
+        (s) => s.action == 'session-initiate',
+      );
+      expect(initiate.sid, sid);
+      expect(initiate.to, 'bob@localhost/laptop');
+      final embeddedSdp = JingleSdpCodec.decodeSdp(
+        '<jingle xmlns="urn:xmpp:jingle:1" action="session-initiate">'
+        '${initiate.content}</jingle>',
+      );
+      expect(embeddedSdp, contains('fake-offer'));
+
+      expect(manager.calls[sid]!.direction, CallDirection.outgoing);
+      expect(manager.calls[sid]!.peerId, 'bob');
+    },
+  );
+
+  test('local ICE candidate fires transport-info', () async {
+    final manager = container.read(callManagerCapsule);
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
     );
 
-    test(
-      'incoming session-initiate creates a matching call in ringing state',
-      () async {
-        final bobAdapter = _FakeAdapter();
-        final bob = _FakeXmpp(jid: 'bob@localhost/flutter');
-        final mgr = _mkManager(
-          bobAdapter,
-          bob,
-          myFullJid: 'bob@localhost/flutter',
-        );
+    fakeAdapter.sessions.single.push(
+      const RtcLocalIceCandidate(
+        candidate: 'candidate:1 1 udp 1 10.0.0.1 55555 typ host',
+        sdpMid: 'audio',
+        sdpMLineIndex: 0,
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 5));
 
-        final offerXml = SdpToJingle.encode(
-          sdp: 'v=0\r\ns=offer-inbound\r\n',
-          contentName: 'audio',
-          creator: 'initiator',
-          media: 'audio',
-        );
-        final jingleXml =
+    final ti = fakeXmpp.sentJingles.singleWhere(
+      (s) => s.action == 'transport-info',
+    );
+    expect(ti.sid, sid);
+    final decoded = JingleSdpCodec.decodeCandidate(
+      '<jingle xmlns="urn:xmpp:jingle:1" action="transport-info">'
+      '${ti.content}</jingle>',
+    );
+    expect(decoded, isNotNull);
+    expect(decoded!.candidate, contains('10.0.0.1'));
+    expect(decoded.sdpMid, 'audio');
+    expect(decoded.sdpMLineIndex, 0);
+  });
+
+  test('inbound session-accept applies remote SDP', () async {
+    final manager = container.read(callManagerCapsule);
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+    );
+
+    fakeXmpp.pushIncoming(
+      XmppJingle(
+        fromFullJid: 'bob@localhost/laptop',
+        iqId: 'iq-bob-1',
+        sid: sid,
+        action: 'session-accept',
+        jingleXml:
+            '<jingle xmlns="urn:xmpp:jingle:1" action="session-accept" sid="$sid">'
+            '<content name="rtp" creator="initiator">'
+            '<rainbow-sdp xmlns="urn:rainbow:jingle:sdp:1">'
+            '<![CDATA[v=0\r\no=peer-answer\r\n]]>'
+            '</rainbow-sdp>'
+            '</content>'
+            '</jingle>',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(fakeAdapter.sessions.single.remoteSdps, hasLength(1));
+    expect(fakeAdapter.sessions.single.remoteSdps.single.isOffer, isFalse);
+    expect(
+      fakeAdapter.sessions.single.remoteSdps.single.sdp,
+      contains('peer-answer'),
+    );
+  });
+
+  test('inbound transport-info applies remote candidate', () async {
+    final manager = container.read(callManagerCapsule);
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+    );
+
+    fakeXmpp.pushIncoming(
+      XmppJingle(
+        fromFullJid: 'bob@localhost/laptop',
+        iqId: 'iq-bob-2',
+        sid: sid,
+        action: 'transport-info',
+        jingleXml:
+            '<jingle xmlns="urn:xmpp:jingle:1" action="transport-info" sid="$sid">'
+            '<content name="rtp" creator="initiator">'
+            '<rainbow-candidate xmlns="urn:rainbow:jingle:sdp:1" '
+            'line="candidate:9 1 udp 2 172.16.0.5 44444 typ srflx" '
+            'sdp-mid="audio" sdp-m-line-index="0"/>'
+            '</content>'
+            '</jingle>',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(fakeAdapter.sessions.single.remoteCandidates, hasLength(1));
+    expect(
+      fakeAdapter.sessions.single.remoteCandidates.single.candidate,
+      contains('172.16.0.5'),
+    );
+  });
+
+  test('inbound session-terminate closes local session', () async {
+    final manager = container.read(callManagerCapsule);
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
+    );
+
+    fakeXmpp.pushIncoming(
+      XmppJingle(
+        fromFullJid: 'bob@localhost/laptop',
+        iqId: 'iq-bob-3',
+        sid: sid,
+        action: 'session-terminate',
+        jingleXml:
+            '<jingle xmlns="urn:xmpp:jingle:1" action="session-terminate" '
+            'sid="$sid"/>',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(fakeAdapter.sessions.single.closed, isTrue);
+    expect(manager.calls, isEmpty);
+  });
+
+  test('inbound session-initiate registers an incoming ActiveCall with '
+      'pending SDP; answer() sends session-accept', () async {
+    final manager = container.read(callManagerCapsule);
+
+    fakeXmpp.pushIncoming(
+      const XmppJingle(
+        fromFullJid: 'bob@localhost/laptop',
+        iqId: 'iq-in-1',
+        sid: 'incoming-sid-1',
+        action: 'session-initiate',
+        jingleXml:
             '<jingle xmlns="urn:xmpp:jingle:1" action="session-initiate" '
-            'sid="sid-in-1">$offerXml</jingle>';
-        bob._events.add(
-          XmppJingle(
-            fromFullJid: 'alice@localhost/flutter',
-            iqId: 'iq-42',
-            sid: 'sid-in-1',
-            action: 'session-initiate',
-            jingleXml: jingleXml,
-          ),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 10));
+            'sid="incoming-sid-1">'
+            '<content name="rtp" creator="initiator">'
+            '<rainbow-sdp xmlns="urn:rainbow:jingle:sdp:1">'
+            '<![CDATA[v=0\r\no=peer-offer\r\n]]>'
+            '</rainbow-sdp>'
+            '</content>'
+            '</jingle>',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 10));
 
-        expect(mgr.activeCalls, hasLength(1));
-        expect(mgr.activeCalls.single.direction, CallDirection.incoming);
-        expect(mgr.activeCalls.single.state, CallState.ringing);
+    final call = manager.calls['incoming-sid-1']!;
+    expect(call.direction, CallDirection.incoming);
+    expect(call.state, CallState.ringing);
+    expect(call.pendingRemoteSdp, contains('peer-offer'));
 
-        expect(bobAdapter.sessions.single.remoteSdp, contains('offer-inbound'));
-        expect(bobAdapter.sessions.single.isOfferRemote, isTrue);
+    await manager.answer('incoming-sid-1');
 
-        mgr.dispose();
-      },
+    expect(fakeAdapter.sessions.single.remoteSdps.first.isOffer, isTrue);
+    expect(
+      fakeAdapter.sessions.single.remoteSdps.first.sdp,
+      contains('peer-offer'),
+    );
+    expect(fakeAdapter.sessions.single.answersCreated, 1);
+
+    final accept = fakeXmpp.sentJingles.singleWhere(
+      (s) => s.action == 'session-accept',
+    );
+    expect(accept.sid, 'incoming-sid-1');
+    final answerSdp = JingleSdpCodec.decodeSdp(
+      '<jingle xmlns="urn:xmpp:jingle:1" action="session-accept">'
+      '${accept.content}</jingle>',
+    );
+    expect(answerSdp, contains('fake-answer'));
+  });
+
+  test('hangUp sends session-terminate and closes locally', () async {
+    final manager = container.read(callManagerCapsule);
+    final peer = RainbowUser(id: 'bob', loginEmail: 'bob@localhost');
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'bob@localhost/laptop',
     );
 
-    test('full offer/answer/trickle round-trip across two peers', () async {
-      final aliceAdapter = _FakeAdapter();
-      final bobAdapter = _FakeAdapter();
-      final alice = _FakeXmpp(jid: 'alice@localhost/flutter');
-      final bob = _FakeXmpp(jid: 'bob@localhost/flutter');
-      alice.peer = bob;
-      bob.peer = alice;
+    await manager.hangUp(sid);
 
-      final mgrAlice = _mkManager(aliceAdapter, alice);
-      final mgrBob = _mkManager(bobAdapter, bob, myFullJid: bob.fullJid);
-
-      final sid = await mgrAlice.startCall(
-        RainbowUser(id: 'bob', loginEmail: 'bob@localhost'),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-
-      // Bob's manager saw the offer, created a session, set remote
-      // description.
-      expect(mgrBob.activeCalls, hasLength(1));
-      expect(bobAdapter.sessions.single.remoteSdp, isNotNull);
-
-      await mgrBob.answer(sid);
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-
-      // Alice's manager saw the answer and set remote description.
-      expect(aliceAdapter.sessions.single.remoteSdp, isNotNull);
-      expect(aliceAdapter.sessions.single.isOfferRemote, isFalse);
-
-      // Trickle an ICE candidate from alice → bob.
-      aliceAdapter.sessions.single.push(
-        const RtcLocalIceCandidate(
-          candidate: 'candidate:1 1 UDP 100 192.168.1.2 4444 typ host',
-          sdpMid: '0',
-          sdpMLineIndex: 0,
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-
-      expect(bobAdapter.sessions.single.remoteCandidates, hasLength(1));
-      expect(
-        bobAdapter.sessions.single.remoteCandidates.single,
-        contains('192.168.1.2'),
-      );
-
-      // Alice hangs up.
-      await mgrAlice.hangUp(sid);
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-
-      expect(mgrAlice.activeCalls, isEmpty);
-      expect(mgrBob.activeCalls, isEmpty);
-      expect(aliceAdapter.sessions.single.closed, isTrue);
-      expect(bobAdapter.sessions.single.closed, isTrue);
-
-      mgrAlice.dispose();
-      mgrBob.dispose();
-    });
+    expect(
+      fakeXmpp.sentJingles.any((s) => s.action == 'session-terminate'),
+      isTrue,
+    );
+    expect(fakeAdapter.sessions.single.closed, isTrue);
+    expect(manager.calls, isEmpty);
   });
 }

@@ -9,6 +9,7 @@ import 'package:rearch/rearch.dart';
 
 import '../rainbow/models.dart';
 import '../state/capsules/auth_state_capsule.dart';
+import '../state/capsules/call_manager_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
@@ -23,6 +24,7 @@ class ChatPage extends RearchConsumer {
   Widget build(BuildContext context, WidgetHandle use) {
     final config = use(configCapsule);
     final actions = use(chatActionsCapsule);
+    final callManager = use(callManagerCapsule);
     final me = use(authCapsule).me;
     final threadKey = '${peer.id}@${config.xmppDomain}';
     final controller = use(chatControllerCapsule(threadKey));
@@ -163,7 +165,22 @@ class ChatPage extends RearchConsumer {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(peer.display)),
+      appBar: AppBar(
+        title: Text(peer.display),
+        actions: [
+          IconButton(
+            tooltip: 'Call',
+            icon: const Icon(Icons.call),
+            onPressed: () => callManager.startCall(
+              peer: peer,
+              // M-3 targets the peer's bare JID; a real deployment
+              // would pick a specific resource. The stub's Jingle
+              // router accepts either.
+              peerFullJid: threadKey,
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           if (peerIsTyping)
