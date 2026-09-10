@@ -198,13 +198,22 @@ guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
   - `flutter build windows --debug` → clean build in ~15s.
   - Session log: `docs/phase-e-log.md`.
 
-### Phase F — Wire live receipt / typing / read indicators to `flutter_chat_ui`'s status field (S)
+### Phase F — Wire live receipt / typing / read indicators to `flutter_chat_ui`'s status field (S) — ✅ done 2026-09-10
 
-- **Do:**
-  - `flutter_chat_core` `Message.status` supports `sending | sent | delivered | seen | error`.
-  - On outbound send: local status = `sending`. On XMPP `<received/>` (XEP-0184): `delivered`. On XMPP `<displayed/>` (XEP-0333): `seen`.
-  - Chat states (`<composing/>`) drive `Chat(typingIndicatorOptions: ...)`.
-- **Acceptance:** closes ROADMAP § 5.6 (delivery/read receipts) and § 5.7 (typing) as visible-in-UI features.
+- **Done:**
+  - **XEP-0184 delivery receipts**: `sendChat` now embeds `<request xmlns="urn:xmpp:receipts"/>`; incoming `<received>` (from either XEP-0184 or XEP-0333) emits `XmppDeliveryReceipt`; capsule stamps `deliveredAt` on the corresponding message so `TextMessage.resolvedStatus` moves from `sent` to `delivered`.
+  - **XEP-0333 chat markers**: `sendChat` embeds `<markable xmlns="urn:xmpp:chat-markers:0"/>`; on incoming 1:1 message the capsule auto-replies with both `<received>` and `<displayed>`; incoming `<displayed>` emits `XmppReadMarker` and stamps `seenAt`.
+  - **XEP-0085 chat states**: new `sendChatState(toBareJid, state)` XMPP method; `chatActionsCapsule.sendChatState(peer, state)` UI hook; new `typingCapsule(threadKey)` reducing `<composing/>` / `<paused/>` events into a live `bool`; `ChatPage` shows `IsTypingIndicator` when the peer is typing and emits debounced composing/paused as the user types (via a custom `composerBuilder` sharing our `TextEditingController`).
+  - `_toChatUiMessage` seeds `sentAt = cm.sentAt` when the message is mine so the first status icon renders immediately as "sent".
+  - `resetMessagesCapsuleCache()` also clears `_typingCache` — otherwise stale typing indicators would survive signout.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new/rewritten files.
+  - `flutter test --exclude-tags=live` → **33/33** pass (Phase F adds 6 tests in `phase_f_receipts_test.dart`: auto-send receipt+marker on incoming, deliveredAt stamping, seenAt stamping, typingCapsule composing→paused round-trip, peer-scoped filtering, `sendChatState` dispatch).
+  - `flutter build windows --debug` → clean build in ~16s.
+  - Session log: `docs/phase-f-log.md`.
+- **Simplifications documented in the log:**
+  - "Aggressive" auto-`<displayed>`: sent whenever we receive a 1:1 message while the capsule is alive, not gated on ChatPage visibility. Fine for demo, refine in Phase G+ if needed.
+  - Typing scope is 1:1 only — group chat typing indicators are out of scope for this phase.
 
 ### Phase G — Attachments UI (M)
 

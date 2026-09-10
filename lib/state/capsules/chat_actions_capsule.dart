@@ -15,6 +15,7 @@ class ChatActions {
     required this.joinMuc,
     required this.setMyPresence,
     required this.createBubble,
+    required this.sendChatState,
   });
 
   final void Function(RainbowUser peer, String body) sendPeer;
@@ -23,6 +24,7 @@ class ChatActions {
   final Future<void> Function(String show, {String? status}) setMyPresence;
   final Future<RainbowBubble> Function(String name, {String? topic})
   createBubble;
+  final void Function(RainbowUser peer, String state) sendChatState;
 }
 
 ChatActions chatActionsCapsule(CapsuleHandle use) {
@@ -83,12 +85,17 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
   Future<RainbowBubble> createBubble(String name, {String? topic}) =>
       rest.createRoom(name, topic: topic);
 
+  void sendChatState(RainbowUser peer, String state) {
+    xmpp.sendChatState(toBareJid: peerThreadKey(peer), state: state);
+  }
+
   return ChatActions(
     sendPeer: sendPeer,
     sendGroup: sendGroup,
     joinMuc: joinMuc,
     setMyPresence: setMyPresence,
     createBubble: createBubble,
+    sendChatState: sendChatState,
   );
 }
 

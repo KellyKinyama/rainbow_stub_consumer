@@ -15,6 +15,7 @@ typedef ThreadKey = String;
 
 final Map<ThreadKey, Capsule<List<ChatMessage>>> _messagesCache = {};
 final Map<ThreadKey, Capsule<InMemoryChatController>> _controllersCache = {};
+final Map<ThreadKey, Capsule<bool>> _typingCache = {};
 
 // Per-thread appenders registered by each subscribing capsule's [effect].
 // A single call to [appendLocalMessage] fans out to all appenders so that
@@ -153,6 +154,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
             .listen((e) {
               if (myGeneration != _cacheGeneration) return;
               final senderId = senderIdFor(e.from, isGroupChat: e.isGroupChat);
+              final isMine = myUserId != null && senderId == myUserId;
               insertFromChatMessage(
                 ChatMessage(
                   id: e.stanzaId,
@@ -160,10 +162,23 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   from: e.from,
                   to: e.to,
                   sentAt: DateTime.now(),
-                  isMine: myUserId != null && senderId == myUserId,
+                  isMine: isMine,
                 ),
                 isGroupChat: e.isGroupChat,
               );
+              // For a 1:1 message from the peer, auto-send delivery
+              // receipt (XEP-0184 / XEP-0333 received) + read marker
+              // (XEP-0333 displayed). We're intentionally "aggressive" on
+              // displayed for the demo — the capsule is only alive while
+              // the chat surface was recently visible.
+              if (!isMuc && !isMine && e.stanzaId.isNotEmpty) {
+                final peerBare = _bareJid(e.from);
+                xmpp.sendDeliveryReceipt(
+                  toBareJid: peerBare,
+                  stanzaId: e.stanzaId,
+                );
+                xmpp.sendReadMarker(toBareJid: peerBare, stanzaId: e.stanzaId);
+              }
             });
 
         // MAM stream: preserve chronological (oldest-first) order by
@@ -190,14 +205,85 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               mamCursor.value = mamCursor.value + 1;
             });
 
+        // Delivery receipts (XEP-0184 / XEP-0333 received) — stamp
+        // deliveredAt on my messages so the Chat widget upgrades the
+        // status icon from "sent" to "delivered".
+        final receiptSub = events
+            .where((e) => e is XmppDeliveryReceipt)
+            .cast<XmppDeliveryReceipt>()
+            .where((e) => e.fromBare == threadKey)
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              await _stampStatus(
+                controller,
+                stanzaId: e.stanzaId,
+                delivered: true,
+              );
+            });
+
+        // Read markers (XEP-0333 displayed) — stamp seenAt.
+        final markerSub = events
+            .where((e) => e is XmppReadMarker)
+            .cast<XmppReadMarker>()
+            .where((e) => e.fromBare == threadKey)
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              await _stampStatus(controller, stanzaId: e.stanzaId, seen: true);
+            });
+
         return () {
           _unregisterAppender(threadKey, append);
           liveSub.cancel();
           mamSub.cancel();
+          receiptSub.cancel();
+          markerSub.cancel();
         };
       }, [events, threadKey, myUserId]);
 
       return controller;
+    }
+
+    return capsule;
+  });
+}
+
+/// Family capsule: `true` while the peer at [threadKey] is currently
+/// typing (last `<composing/>` was recent), otherwise `false`. Auto-clears
+/// on `<paused/>`, `<active/>`, `<inactive/>` or after a 6s inactivity
+/// timeout so a stray composing without a paused doesn't leave the
+/// indicator stuck on.
+Capsule<bool> typingCapsule(ThreadKey threadKey) {
+  return _typingCache.putIfAbsent(threadKey, () {
+    final myGeneration = _cacheGeneration;
+    bool capsule(CapsuleHandle use) {
+      final events = use(xmppEventsCapsule);
+      final slot = use.data<bool>(false);
+
+      use.effect(() {
+        Timer? clearTimer;
+        final sub = events
+            .where((e) => e is XmppChatState)
+            .cast<XmppChatState>()
+            .where((e) => e.fromBare == threadKey)
+            .listen((e) {
+              if (myGeneration != _cacheGeneration) return;
+              clearTimer?.cancel();
+              if (e.state == 'composing') {
+                slot.value = true;
+                clearTimer = Timer(const Duration(seconds: 6), () {
+                  if (myGeneration == _cacheGeneration) slot.value = false;
+                });
+              } else {
+                slot.value = false;
+              }
+            });
+        return () {
+          clearTimer?.cancel();
+          sub.cancel();
+        };
+      }, [events, threadKey]);
+
+      return slot.value;
     }
 
     return capsule;
@@ -223,6 +309,7 @@ void appendLocalMessage(ThreadKey threadKey, ChatMessage msg) {
 void resetMessagesCapsuleCache() {
   _messagesCache.clear();
   _controllersCache.clear();
+  _typingCache.clear();
   _appenders.clear();
   _cacheGeneration++;
 }
@@ -231,8 +318,34 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) => Message.text(
   id: cm.id,
   authorId: authorId,
   createdAt: cm.sentAt,
+  // `sentAt` is what makes Chat show at least the "sent" checkmark for
+  // my own messages; deliveredAt/seenAt are stamped later by
+  // receipt/marker events.
+  sentAt: cm.isMine ? cm.sentAt : null,
   text: cm.body,
 );
+
+/// Finds the message with [stanzaId] and calls `updateMessage` with an
+/// upgraded status timeline. No-op if the id isn't in the controller.
+Future<void> _stampStatus(
+  InMemoryChatController controller, {
+  required String stanzaId,
+  bool delivered = false,
+  bool seen = false,
+}) async {
+  final old = controller.messages
+      .whereType<TextMessage>()
+      .where((m) => m.id == stanzaId)
+      .firstOrNull;
+  if (old == null) return;
+  final now = DateTime.now();
+  final updated = old.copyWith(
+    deliveredAt: delivered || seen ? (old.deliveredAt ?? now) : old.deliveredAt,
+    seenAt: seen ? (old.seenAt ?? now) : old.seenAt,
+  );
+  if (identical(updated, old)) return;
+  await controller.updateMessage(old, updated);
+}
 
 void _registerAppender(ThreadKey threadKey, void Function(ChatMessage) fn) {
   _appenders.putIfAbsent(threadKey, () => []).add(fn);

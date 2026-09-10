@@ -63,6 +63,28 @@ class XmppPresenceUpdate extends XmppEvent {
   final String? status;
 }
 
+/// XEP-0184 `<received>` or XEP-0333 `<received>` — the sender's message
+/// was delivered to the recipient.
+class XmppDeliveryReceipt extends XmppEvent {
+  const XmppDeliveryReceipt({required this.fromBare, required this.stanzaId});
+  final String fromBare;
+  final String stanzaId;
+}
+
+/// XEP-0333 `<displayed>` — the recipient viewed the message.
+class XmppReadMarker extends XmppEvent {
+  const XmppReadMarker({required this.fromBare, required this.stanzaId});
+  final String fromBare;
+  final String stanzaId;
+}
+
+/// XEP-0085 chat state: one of composing / paused / active / inactive / gone.
+class XmppChatState extends XmppEvent {
+  const XmppChatState({required this.fromBare, required this.state});
+  final String fromBare;
+  final String state;
+}
+
 class RainbowXmppClient {
   RainbowXmppClient({
     required this.wsUrl,
@@ -197,9 +219,44 @@ class RainbowXmppClient {
       return;
     }
 
+    final from = el.getAttribute('from') ?? '';
+    final fromBare = _bareOf(from);
+
+    // XEP-0184 delivery receipt AND XEP-0333 chat marker `received`.
+    for (final child in el.childElements) {
+      if (child.localName == 'received' &&
+          (_hasXmlns(child, 'urn:xmpp:receipts') ||
+              _hasXmlns(child, 'urn:xmpp:chat-markers:0'))) {
+        _events.add(
+          XmppDeliveryReceipt(
+            fromBare: fromBare,
+            stanzaId: child.getAttribute('id') ?? '',
+          ),
+        );
+        return;
+      }
+      if (child.localName == 'displayed' &&
+          _hasXmlns(child, 'urn:xmpp:chat-markers:0')) {
+        _events.add(
+          XmppReadMarker(
+            fromBare: fromBare,
+            stanzaId: child.getAttribute('id') ?? '',
+          ),
+        );
+        return;
+      }
+    }
+
+    // XEP-0085 chat state (may or may not come with a body).
+    for (final child in el.childElements) {
+      if (_hasXmlns(child, 'http://jabber.org/protocol/chatstates')) {
+        _events.add(XmppChatState(fromBare: fromBare, state: child.localName));
+        break;
+      }
+    }
+
     final body = el.getElement('body')?.innerText;
     if (body == null) return;
-    final from = el.getAttribute('from') ?? '';
     final to = el.getAttribute('to') ?? '';
     final id = el.getAttribute('id') ?? '';
     final type = el.getAttribute('type');
@@ -213,6 +270,12 @@ class RainbowXmppClient {
       ),
     );
   }
+
+  static bool _hasXmlns(XmlElement el, String ns) =>
+      el.getAttribute('xmlns') == ns || el.name.namespaceUri == ns;
+
+  static String _bareOf(String jid) =>
+      jid.contains('/') ? jid.substring(0, jid.indexOf('/')) : jid;
 
   static bool _isMamNamespace(XmlElement el) {
     const mam = 'urn:xmpp:mam:2';
@@ -260,7 +323,10 @@ class RainbowXmppClient {
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
     _channel?.sink.add(
       '<message id="$stanzaId" to="$toBareJid" type="chat">'
-      '<body>${_esc(body)}</body></message>',
+      '<body>${_esc(body)}</body>'
+      '<request xmlns="urn:xmpp:receipts"/>'
+      '<markable xmlns="urn:xmpp:chat-markers:0"/>'
+      '</message>',
     );
   }
 
@@ -279,6 +345,39 @@ class RainbowXmppClient {
 
   void joinMuc(String roomJid, String nick) {
     _channel?.sink.add('<presence to="$roomJid/$nick"/>');
+  }
+
+  /// XEP-0184 delivery receipt — tells [toBareJid] we received their
+  /// message with id [stanzaId].
+  void sendDeliveryReceipt({
+    required String toBareJid,
+    required String stanzaId,
+  }) {
+    _channel?.sink.add(
+      '<message to="${_esc(toBareJid)}">'
+      '<received xmlns="urn:xmpp:receipts" id="${_esc(stanzaId)}"/>'
+      '</message>',
+    );
+  }
+
+  /// XEP-0333 chat marker — tells [toBareJid] we viewed their message
+  /// with id [stanzaId].
+  void sendReadMarker({required String toBareJid, required String stanzaId}) {
+    _channel?.sink.add(
+      '<message to="${_esc(toBareJid)}">'
+      '<displayed xmlns="urn:xmpp:chat-markers:0" id="${_esc(stanzaId)}"/>'
+      '</message>',
+    );
+  }
+
+  /// XEP-0085 chat state ([state] is composing / paused / active /
+  /// inactive / gone).
+  void sendChatState({required String toBareJid, required String state}) {
+    _channel?.sink.add(
+      '<message to="${_esc(toBareJid)}" type="chat">'
+      '<$state xmlns="http://jabber.org/protocol/chatstates"/>'
+      '</message>',
+    );
   }
 
   /// XEP-0313 MAM query for 1:1 history with [peerBareJid].
