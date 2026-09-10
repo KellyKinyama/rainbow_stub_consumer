@@ -3,11 +3,15 @@ import 'package:flutter_rearch/flutter_rearch.dart';
 
 import '../rainbow/webrtc_adapter.dart';
 import '../state/capsules/call_manager_capsule.dart';
+import 'call_screen.dart';
 
 /// M-3 call surface — a compact floating panel that appears whenever
 /// [CallManager] has an [ActiveCall]. Renders "Incoming call from …"
 /// with Accept / Decline buttons for incoming, or "Calling …" with a
 /// hangup button for outgoing / in-progress.
+///
+/// M-5: once the call reaches `connected`, we automatically push the
+/// full-screen [CallScreen] so the video views take over.
 class CallOverlay extends RearchConsumer {
   const CallOverlay({super.key});
 
@@ -19,6 +23,18 @@ class CallOverlay extends RearchConsumer {
       builder: (ctx, _) {
         final call = manager.activeCall;
         if (call == null) return const SizedBox.shrink();
+        if (call.state == CallState.connected) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!_screenOpen(context, call.sid)) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => CallScreen(sid: call.sid),
+                  settings: RouteSettings(name: 'call:${call.sid}'),
+                ),
+              );
+            }
+          });
+        }
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.all(12),
@@ -27,6 +43,15 @@ class CallOverlay extends RearchConsumer {
         );
       },
     );
+  }
+
+  bool _screenOpen(BuildContext ctx, String sid) {
+    var open = false;
+    Navigator.of(ctx).popUntil((route) {
+      if (route.settings.name == 'call:$sid') open = true;
+      return true;
+    });
+    return open;
   }
 }
 

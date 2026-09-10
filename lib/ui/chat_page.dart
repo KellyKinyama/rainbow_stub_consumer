@@ -169,7 +169,7 @@ class ChatPage extends RearchConsumer {
         title: Text(peer.display),
         actions: [
           IconButton(
-            tooltip: 'Call',
+            tooltip: 'Voice call',
             icon: const Icon(Icons.call),
             onPressed: () => callManager.startCall(
               peer: peer,
@@ -177,6 +177,15 @@ class ChatPage extends RearchConsumer {
               // would pick a specific resource. The stub's Jingle
               // router accepts either.
               peerFullJid: threadKey,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Video call',
+            icon: const Icon(Icons.videocam),
+            onPressed: () => callManager.startCall(
+              peer: peer,
+              peerFullJid: threadKey,
+              video: true,
             ),
           ),
         ],

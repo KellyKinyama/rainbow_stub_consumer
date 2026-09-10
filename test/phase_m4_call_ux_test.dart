@@ -68,7 +68,10 @@ class _FakeSession implements RtcSession {
       'v=0\r\no=fake-answer\r\n';
 
   @override
-  Future<void> setRemoteDescription(String sdp, {required bool isOffer}) async {}
+  Future<void> setRemoteDescription(
+    String sdp, {
+    required bool isOffer,
+  }) async {}
 
   @override
   Future<void> addRemoteIceCandidate({
@@ -79,6 +82,18 @@ class _FakeSession implements RtcSession {
 
   @override
   Future<void> setMicrophoneMuted(bool muted) async {}
+
+  @override
+  Future<void> setCameraEnabled(bool enabled) async {}
+
+  @override
+  Future<void> switchCamera() async {}
+
+  @override
+  MediaStream? get localMediaStream => null;
+
+  @override
+  MediaStream? get remoteMediaStream => null;
 
   @override
   Future<void> close() async {
@@ -155,38 +170,29 @@ XmppJingle _incomingInitiate({
 void main() {
   setUp(() => _sidCounter = 0);
 
-  test(
-    'incoming ringing call starts the ringer; answer stops it',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final ringer = _SilentRinger();
-      final manager = _makeManager(
-        xmpp: xmpp,
-        adapter: adapter,
-        ringer: ringer,
-      );
+  test('incoming ringing call starts the ringer; answer stops it', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final ringer = _SilentRinger();
+    final manager = _makeManager(xmpp: xmpp, adapter: adapter, ringer: ringer);
 
-      xmpp.pushIncoming(_incomingInitiate(sid: 'r1'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+    xmpp.pushIncoming(_incomingInitiate(sid: 'r1'));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(ringer.isRinging, isTrue);
-      expect(ringer.startCount, 1);
+    expect(ringer.isRinging, isTrue);
+    expect(ringer.startCount, 1);
 
-      await manager.answer('r1');
-      // answer() triggers state changes downstream — the fake session
-      // is still 'ringing' by our contract, so we simulate the transition.
-      adapter.sessions.single.push(
-        const RtcStateChanged(CallState.connecting),
-      );
-      await Future<void>.delayed(Duration.zero);
+    await manager.answer('r1');
+    // answer() triggers state changes downstream — the fake session
+    // is still 'ringing' by our contract, so we simulate the transition.
+    adapter.sessions.single.push(const RtcStateChanged(CallState.connecting));
+    await Future<void>.delayed(Duration.zero);
 
-      expect(ringer.isRinging, isFalse);
-      expect(ringer.stopCount, 1);
+    expect(ringer.isRinging, isFalse);
+    expect(ringer.stopCount, 1);
 
-      await manager.dispose();
-    },
-  );
+    await manager.dispose();
+  });
 
   test(
     'session-terminate on a ringing incoming call stops the ringer',
@@ -210,7 +216,8 @@ void main() {
           iqId: 'iq-term',
           sid: 'r2',
           action: 'session-terminate',
-          jingleXml: '<jingle xmlns="urn:xmpp:jingle:1" '
+          jingleXml:
+              '<jingle xmlns="urn:xmpp:jingle:1" '
               'action="session-terminate" sid="r2"/>',
         ),
       );
@@ -222,32 +229,25 @@ void main() {
     },
   );
 
-  test(
-    'lifecycle=paused silences the ringer; resumed re-arms it if still '
-    'ringing',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final ringer = _SilentRinger();
-      final manager = _makeManager(
-        xmpp: xmpp,
-        adapter: adapter,
-        ringer: ringer,
-      );
+  test('lifecycle=paused silences the ringer; resumed re-arms it if still '
+      'ringing', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final ringer = _SilentRinger();
+    final manager = _makeManager(xmpp: xmpp, adapter: adapter, ringer: ringer);
 
-      xmpp.pushIncoming(_incomingInitiate(sid: 'r3'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(ringer.isRinging, isTrue);
+    xmpp.pushIncoming(_incomingInitiate(sid: 'r3'));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(ringer.isRinging, isTrue);
 
-      manager.onAppLifecycleStateChanged(AppLifecycleState.paused);
-      expect(ringer.isRinging, isFalse);
+    manager.onAppLifecycleStateChanged(AppLifecycleState.paused);
+    expect(ringer.isRinging, isFalse);
 
-      manager.onAppLifecycleStateChanged(AppLifecycleState.resumed);
-      expect(ringer.isRinging, isTrue);
+    manager.onAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(ringer.isRinging, isTrue);
 
-      await manager.dispose();
-    },
-  );
+    await manager.dispose();
+  });
 
   test(
     'resolvePeerName populates ActiveCall.peerDisplayName on incoming',
@@ -272,33 +272,30 @@ void main() {
     },
   );
 
-  test(
-    'startCall carries the RainbowUser.display when non-empty',
-    () async {
-      final xmpp = _FakeXmpp();
-      final adapter = _FakeAdapter();
-      final ringer = _SilentRinger();
-      final manager = _makeManager(
-        xmpp: xmpp,
-        adapter: adapter,
-        ringer: ringer,
-        // Resolver would return null; the user object's display wins.
-        resolvePeerName: (id) => null,
-      );
+  test('startCall carries the RainbowUser.display when non-empty', () async {
+    final xmpp = _FakeXmpp();
+    final adapter = _FakeAdapter();
+    final ringer = _SilentRinger();
+    final manager = _makeManager(
+      xmpp: xmpp,
+      adapter: adapter,
+      ringer: ringer,
+      // Resolver would return null; the user object's display wins.
+      resolvePeerName: (id) => null,
+    );
 
-      final peer = RainbowUser(
-        id: 'carol',
-        firstName: 'Carol',
-        lastName: 'Danvers',
-        loginEmail: 'carol@localhost',
-      );
-      final sid = await manager.startCall(
-        peer: peer,
-        peerFullJid: 'carol@localhost/laptop',
-      );
+    final peer = RainbowUser(
+      id: 'carol',
+      firstName: 'Carol',
+      lastName: 'Danvers',
+      loginEmail: 'carol@localhost',
+    );
+    final sid = await manager.startCall(
+      peer: peer,
+      peerFullJid: 'carol@localhost/laptop',
+    );
 
-      expect(manager.calls[sid]!.displayLabel, 'Carol Danvers');
-      await manager.dispose();
-    },
-  );
+    expect(manager.calls[sid]!.displayLabel, 'Carol Danvers');
+    await manager.dispose();
+  });
 }

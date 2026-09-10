@@ -35,6 +35,7 @@ class _FlutterWebRtcSession implements RtcSession {
   final _events = StreamController<RtcSessionEvent>.broadcast();
   CallState _state = CallState.idle;
   rtc.MediaStream? _localStream;
+  rtc.MediaStream? _remoteStream;
   bool _closed = false;
 
   @override
@@ -42,6 +43,12 @@ class _FlutterWebRtcSession implements RtcSession {
 
   @override
   CallState get state => _state;
+
+  @override
+  MediaStream? get localMediaStream => _localStream;
+
+  @override
+  MediaStream? get remoteMediaStream => _remoteStream;
 
   void _emit(RtcSessionEvent e) {
     if (_closed) return;
@@ -90,8 +97,13 @@ class _FlutterWebRtcSession implements RtcSession {
     pc.onTrack = (event) {
       final stream = event.streams.firstOrNull;
       if (stream == null) return;
+      _remoteStream = stream;
       _emit(
-        RtcRemoteTrackAdded(streamId: stream.id, kind: event.track.kind ?? ''),
+        RtcRemoteTrackAdded(
+          streamId: stream.id,
+          kind: event.track.kind ?? '',
+          stream: stream,
+        ),
       );
     };
   }
@@ -103,11 +115,19 @@ class _FlutterWebRtcSession implements RtcSession {
     if (_localStream != null) return;
     _localStream = await rtc.navigator.mediaDevices.getUserMedia({
       'audio': audio,
-      'video': video,
+      'video': video
+          ? {
+              'facingMode': 'user',
+              'width': {'ideal': 640},
+              'height': {'ideal': 480},
+              'frameRate': {'ideal': 24},
+            }
+          : false,
     });
     for (final track in _localStream!.getTracks()) {
       await pc.addTrack(track, _localStream!);
     }
+    _emit(RtcLocalMediaReady(_localStream));
   }
 
   @override
@@ -152,6 +172,22 @@ class _FlutterWebRtcSession implements RtcSession {
     final tracks = _localStream?.getAudioTracks() ?? const [];
     for (final t in tracks) {
       t.enabled = !muted;
+    }
+  }
+
+  @override
+  Future<void> setCameraEnabled(bool enabled) async {
+    final tracks = _localStream?.getVideoTracks() ?? const [];
+    for (final t in tracks) {
+      t.enabled = enabled;
+    }
+  }
+
+  @override
+  Future<void> switchCamera() async {
+    final tracks = _localStream?.getVideoTracks() ?? const [];
+    for (final t in tracks) {
+      await rtc.Helper.switchCamera(t);
     }
   }
 

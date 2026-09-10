@@ -146,6 +146,18 @@ class _FakeSession implements RtcSession {
   Future<void> setMicrophoneMuted(bool muted) async {}
 
   @override
+  Future<void> setCameraEnabled(bool enabled) async {}
+
+  @override
+  Future<void> switchCamera() async {}
+
+  @override
+  MediaStream? get localMediaStream => null;
+
+  @override
+  MediaStream? get remoteMediaStream => null;
+
+  @override
   Future<void> close() async {
     closed = true;
     if (!_events.isClosed) await _events.close();

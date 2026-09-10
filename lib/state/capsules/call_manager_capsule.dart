@@ -23,6 +23,7 @@ class ActiveCall {
     required this.peerFullJid,
     required this.peerId,
     required this.session,
+    required this.hasVideo,
     this.peerDisplayName,
     this.state = CallState.idle,
   });
@@ -31,6 +32,7 @@ class ActiveCall {
   final String peerFullJid;
   final String peerId;
   final RtcSession session;
+  final bool hasVideo;
   String? peerDisplayName;
   CallState state;
   String? pendingRemoteSdp;
@@ -90,6 +92,7 @@ class CallManager extends ChangeNotifier {
   Future<String> startCall({
     required RainbowUser peer,
     required String peerFullJid,
+    bool video = false,
   }) async {
     final sid = _sidGen();
     final session = await _adapter.createSession(
@@ -104,13 +107,14 @@ class CallManager extends ChangeNotifier {
           ? peer.display
           : _resolvePeerName?.call(peer.id),
       session: session,
+      hasVideo: video,
       state: session.state,
     );
     _calls[sid] = call;
     _wireSession(call);
     notifyListeners();
 
-    final sdp = await session.createOffer();
+    final sdp = await session.createOffer(video: video);
     _xmpp.sendJingle(
       toFullJid: peerFullJid,
       action: 'session-initiate',
@@ -130,7 +134,7 @@ class CallManager extends ChangeNotifier {
     final offer = call.pendingRemoteSdp;
     if (offer == null) return;
     await call.session.setRemoteDescription(offer, isOffer: true);
-    final answer = await call.session.createAnswer();
+    final answer = await call.session.createAnswer(video: call.hasVideo);
     _xmpp.sendJingle(
       toFullJid: call.peerFullJid,
       action: 'session-accept',
@@ -220,6 +224,7 @@ class CallManager extends ChangeNotifier {
       peerId: peerId,
       peerDisplayName: _resolvePeerName?.call(peerId),
       session: session,
+      hasVideo: sdp.contains('m=video'),
       state: session.state,
     )..pendingRemoteSdp = sdp;
     _calls[e.sid] = call;
@@ -262,7 +267,8 @@ class CallManager extends ChangeNotifier {
   /// state AND the app is currently resumed. Stops it in every other
   /// combination.
   void _updateRinger() {
-    final shouldRing = !_paused &&
+    final shouldRing =
+        !_paused &&
         _calls.values.any(
           (c) =>
               c.direction == CallDirection.incoming &&
@@ -310,6 +316,7 @@ CallManager callManagerCapsule(CapsuleHandle use) {
     }
     return null;
   }
+
   return use.disposable<CallManager>(
     () => CallManager(
       adapter: adapter,

@@ -3,10 +3,16 @@
 /// The real implementation ([FlutterWebRtcAdapter]) lives in
 /// `webrtc_adapter_impl.dart`. Tests use a `FakeWebRtcAdapter` (see
 /// `test/phase_m2_call_capsule_test.dart`) so unit tests never call
-/// into native WebRTC.
+/// into native WebRTC. The `MediaStream` type is re-exported from
+/// `flutter_webrtc` — it's used only in signatures, so the Dart
+/// analyzer can compile it without the native plugin available.
 library;
 
 import 'dart:async';
+
+import 'package:flutter_webrtc/flutter_webrtc.dart' show MediaStream;
+
+export 'package:flutter_webrtc/flutter_webrtc.dart' show MediaStream;
 
 /// Direction of a call from the local user's point of view.
 enum CallDirection { outgoing, incoming }
@@ -47,9 +53,22 @@ class RtcLocalIceCandidate extends RtcSessionEvent {
 }
 
 class RtcRemoteTrackAdded extends RtcSessionEvent {
-  const RtcRemoteTrackAdded({required this.streamId, required this.kind});
+  const RtcRemoteTrackAdded({
+    required this.streamId,
+    required this.kind,
+    this.stream,
+  });
   final String streamId;
   final String kind;
+
+  /// The underlying `MediaStream` from flutter_webrtc, non-null on
+  /// the real adapter, null on test fakes.
+  final MediaStream? stream;
+}
+
+class RtcLocalMediaReady extends RtcSessionEvent {
+  const RtcLocalMediaReady(this.stream);
+  final MediaStream? stream;
 }
 
 /// A single peer-connection lifecycle, one per call.
@@ -61,6 +80,14 @@ abstract class RtcSession {
 
   /// Most recent state observed. Cheap synchronous accessor.
   CallState get state;
+
+  /// Local media stream once [createOffer] or [createAnswer] has
+  /// captured microphone / camera, otherwise null.
+  MediaStream? get localMediaStream;
+
+  /// Remote media stream once the peer's answer has attached tracks,
+  /// otherwise null.
+  MediaStream? get remoteMediaStream;
 
   /// Creates a local SDP offer for a fresh outgoing call. Sets it as
   /// the local description.
@@ -83,6 +110,14 @@ abstract class RtcSession {
   /// Toggles the local audio track's `enabled` flag. No-op before an
   /// offer has been created.
   Future<void> setMicrophoneMuted(bool muted);
+
+  /// Toggles the local video track's `enabled` flag. No-op if the
+  /// session was created audio-only.
+  Future<void> setCameraEnabled(bool enabled);
+
+  /// Cycles between front and rear camera on devices that have both.
+  /// No-op on desktop or when no local video track exists.
+  Future<void> switchCamera();
 
   /// Closes the peer connection and releases native resources. Idempotent.
   Future<void> close();
