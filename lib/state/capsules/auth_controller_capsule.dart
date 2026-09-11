@@ -5,10 +5,12 @@ import 'package:rearch/rearch.dart';
 import '../../rainbow/models.dart';
 import '../../rainbow/xmpp_client.dart';
 import '../models/auth_state.dart';
+import '../session_store.dart';
 import 'auth_state_capsule.dart';
 import 'messages_capsule.dart';
 import 'push_capsule.dart';
 import 'rest_capsule.dart';
+import 'session_store_capsule.dart';
 import 'xmpp_capsule.dart';
 
 /// Controller returned by [authControllerCapsule].
@@ -53,6 +55,46 @@ AuthController authControllerCapsule(CapsuleHandle use) {
   final xmpp = use(xmppCapsule);
   final authSlot = use(authStateCapsule);
   final push = use(pushCapsule);
+  final store = use(sessionStoreCapsule);
+  final booted = use.data<bool>(false);
+
+  Future<void> restore() async {
+    authSlot.value = const AuthState.checking();
+    try {
+      final stored = await store.read();
+      if (stored == null) {
+        // Only clobber back to signedOut if nothing else (signIn) has
+        // taken over during our async work.
+        if (authSlot.value is Checking) {
+          authSlot.value = const AuthState.signedOut();
+        }
+        return;
+      }
+      rest.setBearer(stored.token);
+      final me = await rest.getUser(stored.userId);
+      await xmpp.connect(email: stored.email, saslPassword: stored.token);
+      if (authSlot.value is Checking) {
+        authSlot.value = AuthState.signedIn(me: me, token: stored.token);
+      }
+    } on Object {
+      rest.setBearer(null);
+      await store.clear();
+      if (authSlot.value is Checking) {
+        authSlot.value = const AuthState.signedOut();
+      }
+    }
+  }
+
+  // One-shot silent re-auth on cold start.
+  use.effect(() {
+    if (!booted.value) {
+      scheduleMicrotask(() {
+        booted.value = true;
+        unawaited(restore());
+      });
+    }
+    return null;
+  }, const []);
 
   // Silent auto-reconnect: when the XMPP WebSocket drops while the
   // user is still signed in, prefer XEP-0198 resume; fall back to a
@@ -116,6 +158,16 @@ AuthController authControllerCapsule(CapsuleHandle use) {
       me: result.loggedInUser,
       token: result.token,
     );
+    // Persist so a page refresh / app relaunch skips the login form.
+    unawaited(
+      store.write(
+        StoredSession(
+          email: email,
+          token: result.token,
+          userId: result.loggedInUser.id,
+        ),
+      ),
+    );
   }
 
   Future<void> signOut() async {
@@ -148,6 +200,7 @@ AuthController authControllerCapsule(CapsuleHandle use) {
     resetMessagesCapsuleCache();
     authSlot.value = const AuthState.signedOut();
     rest.setBearer(null);
+    unawaited(store.clear());
   }
 
   Future<RainbowUser?> refreshMe() async {

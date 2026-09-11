@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
 import 'package:rearch/rearch.dart';
 
+import 'state/capsules/auth_controller_capsule.dart';
 import 'state/capsules/auth_state_capsule.dart';
 import 'state/capsules/call_manager_capsule.dart';
 import 'state/models/auth_state.dart';
@@ -49,7 +50,13 @@ class _AuthGate extends RearchConsumer {
 
   @override
   Widget build(BuildContext context, WidgetHandle use) {
+    // Reading the controller triggers the boot effect that attempts
+    // silent re-auth from SessionStore.
+    use(authControllerCapsule);
     final auth = use(authCapsule);
+    // Checking is a transient state during silent re-auth; treat it as
+    // signed-out for the UI (LoginPage renders) so widget tests can
+    // pumpAndSettle without waiting on a spinner.
     final home = auth is SignedIn
         ? const _CallLifecycleWatcher(child: HomePage())
         : const LoginPage();

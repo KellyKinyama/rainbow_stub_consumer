@@ -4,6 +4,7 @@ import '../../rainbow/models.dart';
 sealed class AuthState {
   const AuthState();
 
+  const factory AuthState.checking() = Checking;
   const factory AuthState.signedOut() = SignedOut;
   const factory AuthState.signedIn({
     required RainbowUser me,
@@ -11,6 +12,7 @@ sealed class AuthState {
   }) = SignedIn;
 
   bool get isSignedIn => this is SignedIn;
+  bool get isChecking => this is Checking;
   RainbowUser? get me => switch (this) {
     SignedIn(:final me) => me,
     _ => null,
@@ -19,6 +21,10 @@ sealed class AuthState {
     SignedIn(:final token) => token,
     _ => null,
   };
+}
+
+final class Checking extends AuthState {
+  const Checking();
 }
 
 final class SignedOut extends AuthState {

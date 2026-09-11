@@ -58,11 +58,7 @@ UnreadController unreadCapsule(CapsuleHandle use) {
   }
 
   final total = slot.value.values.fold<int>(0, (a, b) => a + b);
-  return UnreadController(
-    counts: slot.value,
-    total: total,
-    markRead: markRead,
-  );
+  return UnreadController(counts: slot.value, total: total, markRead: markRead);
 }
 
 String _localPart(String jid) {
