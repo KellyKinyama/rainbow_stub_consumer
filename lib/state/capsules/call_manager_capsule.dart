@@ -463,9 +463,10 @@ CallManager callManagerCapsule(CapsuleHandle use) {
 }
 
 /// Ringer factory capsule — overridable by tests via
-/// `container.mock(ringerCapsule)`. The production default rings
-/// via haptic feedback; a test can inject a no-op or scripted fake.
-Ringer ringerCapsule(CapsuleHandle use) => HapticRinger();
+/// `container.mock(ringerCapsule)`. Production plays the platform
+/// ringtone via `flutter_ringtone_player`; a test can inject a no-op
+/// or scripted fake.
+Ringer ringerCapsule(CapsuleHandle use) => SystemRinger();
 
 /// Payload written by the CallManager to REST when a call ends.
 /// Exposed for tests; not intended for UI consumers.
