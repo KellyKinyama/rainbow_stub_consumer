@@ -13,6 +13,7 @@ import '../state/capsules/call_manager_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
+import '../state/capsules/unread_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'forward_picker.dart';
@@ -31,12 +32,19 @@ class ChatPage extends RearchConsumer {
     final threadKey = '${peer.id}@${config.xmppDomain}';
     final controller = use(chatControllerCapsule(threadKey));
     final peerIsTyping = use(typingCapsule(threadKey));
+    final unread = use(unreadCapsule);
     final input = use.textEditingController();
     final (replyingTo, setReplyingTo) = use.state<Message?>(null);
     final (editing, setEditing) = use.state<TextMessage?>(null);
 
     final currentUserId = me?.id ?? 'me';
     final selfName = me?.display ?? me?.loginEmail ?? 'Me';
+
+    // Clear unread badge for this peer once the page is open.
+    use.effect(() {
+      unread.markRead(peer.id);
+      return null;
+    }, [peer.id]);
 
     use.effect(() {
       Timer? pauseTimer;

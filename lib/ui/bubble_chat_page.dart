@@ -11,6 +11,7 @@ import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
+import '../state/capsules/unread_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'bubble_details_page.dart';
@@ -30,6 +31,7 @@ class BubbleChatPage extends RearchConsumer {
     final rosterAsync = use(rosterCapsule);
     final threadKey = '${bubble.id}@muc.${config.xmppDomain}';
     final controller = use(chatControllerCapsule(threadKey));
+    final unread = use(unreadCapsule);
     final input = use.textEditingController();
     final (replyingTo, setReplyingTo) = use.state<Message?>(null);
     final (editing, setEditing) = use.state<TextMessage?>(null);
@@ -37,6 +39,7 @@ class BubbleChatPage extends RearchConsumer {
     // Join the MUC once per bubble.
     use.effect(() {
       actions.joinMuc(bubble);
+      unread.markRead(bubble.id);
       return null;
     }, [bubble.id]);
 

@@ -5,6 +5,7 @@ import 'package:rearch/rearch.dart';
 import '../rainbow/models.dart';
 import '../state/capsules/conversations_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
+import '../state/capsules/unread_capsule.dart';
 import 'chat_page.dart';
 
 /// "Recent" tab — mirrors the RN sample's ``Conversations`` list.
@@ -18,6 +19,7 @@ class ConversationsTab extends RearchConsumer {
   @override
   Widget build(BuildContext context, WidgetHandle use) {
     final conversations = use(conversationsCapsule);
+    final unread = use(unreadCapsule);
     if (conversations.isEmpty) {
       return const _EmptyState();
     }
@@ -25,6 +27,7 @@ class ConversationsTab extends RearchConsumer {
       itemCount: conversations.length,
       itemBuilder: (_, i) {
         final c = conversations[i];
+        final badge = unread.counts[c.peerId] ?? 0;
         return ListTile(
           leading: CircleAvatar(
             child: Text(
@@ -39,7 +42,17 @@ class ConversationsTab extends RearchConsumer {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          trailing: Text(_timeLabel(c.lastAt)),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(_timeLabel(c.lastAt)),
+              if (badge > 0) ...[
+                const SizedBox(height: 4),
+                Badge.count(count: badge),
+              ],
+            ],
+          ),
           onTap: () => _openChatFromRoster(context, use, c.peerId),
         );
       },

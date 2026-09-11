@@ -6,6 +6,7 @@ import '../rainbow/models.dart';
 import '../state/capsules/bubble_invitations_capsule.dart';
 import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/unread_capsule.dart';
 import 'bubble_chat_page.dart';
 
 class BubblesTab extends RearchConsumer {
@@ -76,6 +77,7 @@ class BubblesTab extends RearchConsumer {
     final bubblesAsync = use(bubblesCapsule);
     final invites = use(bubbleInvitationsCapsule);
     final actions = use(chatActionsCapsule);
+    final unread = use(unreadCapsule);
     final (query, setQuery) = use.state<String>('');
     final normalized = query.toLowerCase().trim();
     bool matches(RainbowBubble b) {
@@ -101,6 +103,7 @@ class BubblesTab extends RearchConsumer {
         list: list.where(matches).toList(growable: false),
         totalCount: list.length,
         query: query,
+        unread: unread.counts,
         onQueryChanged: setQuery,
         onAccept: (b) async {
           await actions.acceptBubbleInvitation(b);
@@ -139,6 +142,7 @@ class _BubblesBody extends StatelessWidget {
     required this.list,
     required this.totalCount,
     required this.query,
+    required this.unread,
     required this.onQueryChanged,
     required this.onAccept,
     required this.onDecline,
@@ -147,6 +151,7 @@ class _BubblesBody extends StatelessWidget {
   final List<RainbowBubble> list;
   final int totalCount;
   final String query;
+  final Map<String, int> unread;
   final ValueChanged<String> onQueryChanged;
   final Future<void> Function(RainbowBubble) onAccept;
   final Future<void> Function(RainbowBubble) onDecline;
@@ -203,7 +208,9 @@ class _BubblesBody extends StatelessWidget {
                     leading: const CircleAvatar(child: Icon(Icons.forum)),
                     title: Text(b.name),
                     subtitle: Text(b.topic ?? '${b.members.length} members'),
-                    trailing: const Icon(Icons.chevron_right),
+                    trailing: (unread[b.id] ?? 0) > 0
+                        ? Badge.count(count: unread[b.id]!)
+                        : const Icon(Icons.chevron_right),
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => BubbleChatPage(bubble: b),

@@ -4,10 +4,12 @@ import 'package:rearch/rearch.dart';
 
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/auth_state_capsule.dart';
+import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/connectivity_capsule.dart';
 import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
+import '../state/capsules/unread_capsule.dart';
 import 'bubbles_tab.dart';
 import 'call_log_page.dart';
 import 'contacts_tab.dart';
@@ -27,6 +29,21 @@ class HomePage extends RearchConsumer {
     use(pushCapsule);
     final permissions = use(permissionsCapsule);
     final online = use(connectivityCapsule);
+    final unread = use(unreadCapsule);
+    final bubblesAsync = use(bubblesCapsule);
+    final bubbleIds = switch (bubblesAsync) {
+      AsyncData(:final data) => data.map((b) => b.id).toSet(),
+      _ => const <String>{},
+    };
+    var bubbleUnread = 0;
+    var recentUnread = 0;
+    unread.counts.forEach((k, v) {
+      if (bubbleIds.contains(k)) {
+        bubbleUnread += v;
+      } else {
+        recentUnread += v;
+      }
+    });
     final (tab, setTab) = use.state<int>(0);
 
     const pages = [ConversationsTab(), ContactsTab(), BubblesTab()];
@@ -99,20 +116,36 @@ class HomePage extends RearchConsumer {
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: setTab,
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
+            icon: Badge.count(
+              isLabelVisible: recentUnread > 0,
+              count: recentUnread,
+              child: const Icon(Icons.chat_bubble_outline),
+            ),
+            selectedIcon: Badge.count(
+              isLabelVisible: recentUnread > 0,
+              count: recentUnread,
+              child: const Icon(Icons.chat_bubble),
+            ),
             label: 'Recent',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.people_outline),
             selectedIcon: Icon(Icons.people),
             label: 'Contacts',
           ),
           NavigationDestination(
-            icon: Icon(Icons.forum_outlined),
-            selectedIcon: Icon(Icons.forum),
+            icon: Badge.count(
+              isLabelVisible: bubbleUnread > 0,
+              count: bubbleUnread,
+              child: const Icon(Icons.forum_outlined),
+            ),
+            selectedIcon: Badge.count(
+              isLabelVisible: bubbleUnread > 0,
+              count: bubbleUnread,
+              child: const Icon(Icons.forum),
+            ),
             label: 'Bubbles',
           ),
         ],
