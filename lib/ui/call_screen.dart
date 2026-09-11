@@ -143,21 +143,55 @@ class _RemoteVideoState extends State<_RemoteVideo> {
 
   @override
   Widget build(BuildContext context) {
-    if (_boundStream == null || !widget.call.hasVideo) {
+    // Always keep the RTCVideoView in the widget tree so the underlying
+    // <video> element (which is what actually plays the remote audio on
+    // Flutter web) stays mounted. When there's no picture to show, we
+    // layer a placeholder on top of a 1x1 RTCVideoView instead of
+    // replacing it.
+    final noStream = _boundStream == null;
+    final noVideo =
+        !noStream &&
+        (_boundStream!.getVideoTracks().isEmpty || !widget.call.hasVideo);
+    if (noStream) {
       return _AudioAvatar(call: widget.call);
     }
-    // Remote peer degraded to audio-only (their camera failed or they
-    // explicitly disabled it). Show a camera-off placeholder so the
-    // caller sees why there's no picture.
-    if (_boundStream!.getVideoTracks().isEmpty) {
-      return Container(
-        color: Colors.black,
-        alignment: Alignment.center,
-        child: const Icon(
-          Icons.videocam_off,
-          color: Colors.white54,
-          size: 96,
-        ),
+    if (noVideo) {
+      return Stack(
+        children: [
+          const Positioned(
+            left: 0,
+            top: 0,
+            width: 1,
+            height: 1,
+            child: IgnorePointer(child: SizedBox()),
+          ),
+          Positioned(
+            left: 0,
+            top: 0,
+            width: 1,
+            height: 1,
+            child: IgnorePointer(
+              child: RTCVideoView(
+                _renderer,
+                objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitContain,
+              ),
+            ),
+          ),
+          if (widget.call.hasVideo)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.videocam_off,
+                  color: Colors.white54,
+                  size: 96,
+                ),
+              ),
+            )
+          else
+            Positioned.fill(child: _AudioAvatar(call: widget.call)),
+        ],
       );
     }
     return RTCVideoView(
