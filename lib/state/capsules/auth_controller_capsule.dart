@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
+import '../../rainbow/xmpp_client.dart';
 import '../models/auth_state.dart';
 import 'auth_state_capsule.dart';
 import 'messages_capsule.dart';
@@ -48,6 +51,60 @@ AuthController authControllerCapsule(CapsuleHandle use) {
   final rest = use(restCapsule);
   final xmpp = use(xmppCapsule);
   final authSlot = use(authStateCapsule);
+
+  // Silent auto-reconnect: when the XMPP WebSocket drops while the
+  // user is still signed in, prefer XEP-0198 resume; fall back to a
+  // full connect. Exponential backoff avoids reconnect storms if
+  // the stub is genuinely down.
+  use.effect(() {
+    Timer? timer;
+    var attempt = 0;
+
+    Future<void> tryReconnect() async {
+      final state = authSlot.value;
+      if (state is! SignedIn) return;
+      try {
+        if (xmpp.canResume) {
+          await xmpp.resume(
+            email: state.me.loginEmail,
+            saslPassword: state.token,
+          );
+        } else {
+          await xmpp.connect(
+            email: state.me.loginEmail,
+            saslPassword: state.token,
+          );
+        }
+        attempt = 0;
+      } on Object {
+        // Failed \u2014 XmppDisconnected fires again from onDone/onError;
+        // that path will re-schedule with a larger backoff.
+      }
+    }
+
+    final sub = xmpp.events.listen((e) {
+      switch (e) {
+        case XmppConnected():
+          attempt = 0;
+          timer?.cancel();
+          timer = null;
+        case XmppDisconnected():
+          if (authSlot.value is! SignedIn) return;
+          if (timer != null) return;
+          final delayMs = 500 * (1 << (attempt.clamp(0, 5)));
+          attempt++;
+          timer = Timer(Duration(milliseconds: delayMs), () {
+            timer = null;
+            tryReconnect();
+          });
+      }
+    });
+
+    return () {
+      timer?.cancel();
+      sub.cancel();
+    };
+  }, [xmpp]);
 
   Future<void> signIn(String email, String password) async {
     final result = await rest.login(email, password);

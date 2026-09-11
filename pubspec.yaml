@@ -49,6 +49,12 @@ dependencies:
   connectivity_plus: ^7.3.1
   url_launcher: ^6.3.2
 
+# permission_handler_android 14.x requires Kotlin 2.3.20 + AGP 9.0.1.
+# Our Android project pins Kotlin 2.2.20 / AGP 8.11.1, so hold the
+# transitive platform impl at the last 13.x line.
+dependency_overrides:
+  permission_handler_android: 13.0.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

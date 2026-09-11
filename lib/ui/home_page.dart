@@ -128,6 +128,8 @@ class _PermissionsBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final missing = state.deniedLabels.join(', ');
+    final needsSettings = state.anyPermanentlyDenied;
     return Material(
       color: scheme.errorContainer,
       child: Padding(
@@ -138,11 +140,19 @@ class _PermissionsBanner extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Some permissions were denied. Calls and file attachments may not work.',
+                needsSettings
+                    ? '$missing blocked. Enable in system settings to use calls and attachments.'
+                    : '$missing denied. Calls and file attachments may not work.',
                 style: TextStyle(color: scheme.onErrorContainer),
               ),
             ),
-            TextButton(onPressed: state.ask, child: const Text('Retry')),
+            if (needsSettings)
+              TextButton(
+                onPressed: state.openSettings,
+                child: const Text('Open settings'),
+              )
+            else
+              TextButton(onPressed: state.ask, child: const Text('Retry')),
           ],
         ),
       ),

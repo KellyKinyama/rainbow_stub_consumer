@@ -13,29 +13,61 @@ class BubblesTab extends RearchConsumer {
 
   Future<void> _createBubble(BuildContext context, ChatActions actions) async {
     final controller = TextEditingController();
+    var busy = false;
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('New bubble'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Name'),
+      barrierDismissible: false,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (_, setState) => AlertDialog(
+          title: const Text('New bubble'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            enabled: !busy,
+            decoration: const InputDecoration(labelText: 'Name'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: busy ? null : () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: busy
+                  ? null
+                  : () async {
+                      final name = controller.text.trim();
+                      if (name.isEmpty) return;
+                      setState(() => busy = true);
+                      try {
+                        await actions.createBubble(name);
+                        if (dialogCtx.mounted) {
+                          Navigator.of(dialogCtx).pop(true);
+                        }
+                      } on Object catch (e) {
+                        setState(() => busy = false);
+                        if (dialogCtx.mounted) {
+                          ScaffoldMessenger.of(dialogCtx).showSnackBar(
+                            SnackBar(content: Text('Create failed: $e')),
+                          );
+                        }
+                      }
+                    },
+              child: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Create'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Create'),
-          ),
-        ],
       ),
     );
-    if (ok == true && controller.text.trim().isNotEmpty) {
-      await actions.createBubble(controller.text.trim());
+    if (ok == true && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bubble created')));
     }
   }
 

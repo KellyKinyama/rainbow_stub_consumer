@@ -16,20 +16,42 @@ class PermissionsState {
     required this.microphone,
     required this.notifications,
     required this.ask,
+    required this.openSettings,
   });
 
   final PermissionSlot camera;
   final PermissionSlot microphone;
   final PermissionSlot notifications;
   final Future<void> Function() ask;
+  final Future<bool> Function() openSettings;
+
+  bool _isDenied(PermissionSlot s) =>
+      s == PermissionSlot.denied || s == PermissionSlot.permanentlyDenied;
 
   bool get anyDenied =>
-      camera == PermissionSlot.denied ||
-      microphone == PermissionSlot.denied ||
-      notifications == PermissionSlot.denied;
+      _isDenied(camera) || _isDenied(microphone) || _isDenied(notifications);
+
+  bool get anyPermanentlyDenied =>
+      camera == PermissionSlot.permanentlyDenied ||
+      microphone == PermissionSlot.permanentlyDenied ||
+      notifications == PermissionSlot.permanentlyDenied;
+
+  List<String> get deniedLabels {
+    final out = <String>[];
+    if (_isDenied(camera)) out.add('Camera');
+    if (_isDenied(microphone)) out.add('Microphone');
+    if (_isDenied(notifications)) out.add('Notifications');
+    return out;
+  }
 }
 
-enum PermissionSlot { granted, denied, notAsked, unsupported }
+enum PermissionSlot {
+  granted,
+  denied,
+  permanentlyDenied,
+  notAsked,
+  unsupported,
+}
 
 /// Requests camera / microphone / notification permissions
 /// automatically the first time the user signs in on this device,
@@ -57,6 +79,7 @@ PermissionsState permissionsCapsule(CapsuleHandle use) {
       microphone: _slot(results[Permission.microphone]),
       notifications: _slot(results[Permission.notification]),
       ask: ask,
+      openSettings: openAppSettings,
     );
   }
 
@@ -77,15 +100,17 @@ PermissionsState permissionsCapsule(CapsuleHandle use) {
         microphone: PermissionSlot.notAsked,
         notifications: PermissionSlot.notAsked,
         ask: ask,
+        openSettings: openAppSettings,
       );
 }
 
 PermissionSlot _slot(PermissionStatus? s) {
   if (s == null) return PermissionSlot.notAsked;
   if (s.isGranted || s.isLimited) return PermissionSlot.granted;
-  if (s.isPermanentlyDenied || s.isDenied || s.isRestricted) {
-    return PermissionSlot.denied;
+  if (s.isPermanentlyDenied || s.isRestricted) {
+    return PermissionSlot.permanentlyDenied;
   }
+  if (s.isDenied) return PermissionSlot.denied;
   return PermissionSlot.notAsked;
 }
 
@@ -95,4 +120,5 @@ PermissionsState _webUnsupported(Future<void> Function() ask) =>
       microphone: PermissionSlot.unsupported,
       notifications: PermissionSlot.unsupported,
       ask: ask,
+      openSettings: () async => false,
     );

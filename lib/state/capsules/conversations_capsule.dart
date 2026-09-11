@@ -87,7 +87,24 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
     return sub.cancel;
   }, [events, myId]);
 
-  final list = slot.value.values.toList()
+  // Roster may arrive after some XmppChatMessage events (bootstrap race
+  // or a same-connection add). Re-resolve display names on every build
+  // so a stale raw user id gets replaced once the roster catches up.
+  final resolved = <String, ConversationSummary>{};
+  for (final entry in slot.value.entries) {
+    final live = peerDisplayFor(entry.key);
+    resolved[entry.key] = live == entry.value.peerDisplay
+        ? entry.value
+        : ConversationSummary(
+            peerId: entry.value.peerId,
+            peerDisplay: live,
+            lastBody: entry.value.lastBody,
+            lastAt: entry.value.lastAt,
+            direction: entry.value.direction,
+          );
+  }
+
+  final list = resolved.values.toList()
     ..sort((a, b) => b.lastAt.compareTo(a.lastAt));
   return list;
 }

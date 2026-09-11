@@ -43,11 +43,11 @@ class GroupCallScreen extends RearchConsumer {
       AsyncData<List<RosterEntry>>(:final data) => data,
       _ => const <RosterEntry>[],
     };
-    final iAmModerator = me != null &&
+    final iAmModerator =
+        me != null &&
         bubble.members.any(
           (m) =>
-              m.userId == me.id &&
-              (m.role == 'owner' || m.role == 'moderator'),
+              m.userId == me.id && (m.role == 'owner' || m.role == 'moderator'),
         );
 
     return ListenableBuilder(
@@ -92,10 +92,8 @@ class GroupCallScreen extends RearchConsumer {
                       session: call.session,
                       locked: call.locked,
                       canModerate: iAmModerator,
-                      onToggleLock: () => manager.setRoomLocked(
-                        roomBareJid,
-                        !call.locked,
-                      ),
+                      onToggleLock: () =>
+                          manager.setRoomLocked(roomBareJid, !call.locked),
                       onAddParticipant: () async {
                         final target = await showBubbleContactPicker(
                           context,

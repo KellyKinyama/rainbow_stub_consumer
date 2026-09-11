@@ -196,6 +196,40 @@ class RainbowRestClient {
         .toList();
   }
 
+  Future<List<RainbowUser>> searchUsers(String query, {int limit = 20}) async {
+    final r = await _http.get(
+      _u('/api/rainbow/enduser/v1.0/users', {
+        'search': query,
+        'limit': '$limit',
+      }),
+      headers: _authed(),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return (j['data'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(RainbowUser.fromJson)
+        .toList(growable: false);
+  }
+
+  Future<RosterEntry> addContact(String userId) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/networks/$userId'),
+      headers: _authed(contentType: 'application/json'),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RosterEntry.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
+  Future<void> removeContact(String userId) async {
+    final r = await _http.delete(
+      _u('/api/rainbow/enduser/v1.0/users/networks/$userId'),
+      headers: _authed(),
+    );
+    _check(r);
+  }
+
   Future<RainbowUser> getUser(String id) async {
     final r = await _http.get(
       _u('/api/rainbow/enduser/v1.0/users/$id'),
