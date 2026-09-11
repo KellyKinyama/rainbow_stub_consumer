@@ -1,7 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
+
+import '_web_ringer.dart';
 
 /// A ringer surfaces "there is an incoming call, look at me!" without
 /// bundling audio assets — [SystemRinger] delegates to the platform's
@@ -19,10 +22,9 @@ abstract class Ringer {
   bool get isRinging;
 }
 
-/// Plays the platform ringtone via `flutter_ringtone_player`. Loops
-/// natively — no polling timer needed. Falls back to haptic pulses
-/// on platforms where the plugin is a no-op (currently: web on some
-/// browsers), so the caller still gets a signal.
+/// Plays the platform ringtone on mobile (`flutter_ringtone_player`),
+/// falls back to a Web Audio beep loop on browsers, and pulses haptic
+/// feedback in parallel on any platform that supports it.
 class SystemRinger implements Ringer {
   SystemRinger();
   bool _ringing = false;
@@ -35,11 +37,14 @@ class SystemRinger implements Ringer {
   void start() {
     if (_ringing) return;
     _ringing = true;
-    try {
-      FlutterRingtonePlayer().playRingtone(looping: true);
-    } on Object {
-      // Plugin unsupported on this platform — quietly fall through
-      // to the haptic pulse below.
+    if (kIsWeb) {
+      startWebRing();
+    } else {
+      try {
+        FlutterRingtonePlayer().playRingtone(looping: true);
+      } on Object {
+        // Plugin unsupported on this platform — silently fall through.
+      }
     }
     HapticFeedback.mediumImpact();
     _hapticFallback = Timer.periodic(const Duration(milliseconds: 1500), (_) {
@@ -51,10 +56,14 @@ class SystemRinger implements Ringer {
   void stop() {
     if (!_ringing) return;
     _ringing = false;
-    try {
-      FlutterRingtonePlayer().stop();
-    } on Object {
-      // ignored — matches start() best-effort path.
+    if (kIsWeb) {
+      stopWebRing();
+    } else {
+      try {
+        FlutterRingtonePlayer().stop();
+      } on Object {
+        // ignored — matches start() best-effort path.
+      }
     }
     _hapticFallback?.cancel();
     _hapticFallback = null;
