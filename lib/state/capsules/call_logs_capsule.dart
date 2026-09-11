@@ -48,8 +48,7 @@ CallLogController callLogsCapsule(CapsuleHandle use) {
       final list = await rest.listCallLogs(userId: me.id);
       slot.value = AsyncData<List<CallLogEntry>>(list);
     } on Object catch (e, s) {
-      slot.value =
-          AsyncError<List<CallLogEntry>>(e, s, previousOf(slot.value));
+      slot.value = AsyncError<List<CallLogEntry>>(e, s, previousOf(slot.value));
     }
   }
 

@@ -230,6 +230,86 @@ class RainbowRestClient {
     return RainbowBubble.fromJson(j['data'] as Map<String, dynamic>);
   }
 
+  /// Fetches bubbles the signed-in user has been invited to but not
+  /// yet accepted — the server returns `status='invited'` rows.
+  Future<List<RainbowBubble>> roomInvitations() async {
+    final r = await _http.get(
+      _u('/api/rainbow/enduser/v1.0/rooms/invitations'),
+      headers: _authed(),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return (j['data'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(RainbowBubble.fromJson)
+        .toList();
+  }
+
+  Future<RainbowBubble> updateRoom(
+    String id, {
+    String? name,
+    String? topic,
+    bool? isArchived,
+  }) async {
+    final r = await _http.put(
+      _u('/api/rainbow/enduser/v1.0/rooms/$id'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({
+        if (name != null) 'name': name,
+        if (topic != null) 'topic': topic,
+        if (isArchived != null) 'isArchived': isArchived,
+      }),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RainbowBubble.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
+  Future<void> deleteRoom(String id) async {
+    final r = await _http.delete(
+      _u('/api/rainbow/enduser/v1.0/rooms/$id'),
+      headers: _authed(),
+    );
+    _check(r);
+  }
+
+  /// Invites a user into a room by user id (preferred) or login email.
+  /// Server accepts either; supplying both is allowed but user id wins.
+  Future<RainbowBubble> inviteToRoom(
+    String id, {
+    String? userId,
+    String? loginEmail,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/rooms/$id/users'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({
+        if (userId != null) 'userId': userId,
+        if (loginEmail != null) 'loginEmail': loginEmail,
+      }),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RainbowBubble.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
+  /// Updates a member's status inside a room. Used for
+  /// accept / decline invitation, leave, and moderator-side kicks.
+  Future<RainbowBubble> setRoomMemberStatus({
+    required String bubbleId,
+    required String userId,
+    required String status,
+  }) async {
+    final r = await _http.put(
+      _u('/api/rainbow/enduser/v1.0/rooms/$bubbleId/users/$userId'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({'status': status}),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RainbowBubble.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
   Future<void> setPresence(String userId, String show, {String? status}) async {
     final r = await _http.post(
       _u('/api/rainbow/enduser/v1.0/users/$userId/presences'),
@@ -303,10 +383,10 @@ class RainbowRestClient {
     int offset = 0,
   }) async {
     final r = await _http.get(
-      _u(
-        '/api/rainbow/enduser/v1.0/users/$userId/calllogs',
-        {'limit': '$limit', 'offset': '$offset'},
-      ),
+      _u('/api/rainbow/enduser/v1.0/users/$userId/calllogs', {
+        'limit': '$limit',
+        'offset': '$offset',
+      }),
       headers: _authed(),
     );
     _check(r);

@@ -13,6 +13,7 @@ import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
+import 'bubble_details_page.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
 
@@ -166,6 +167,17 @@ class BubbleChatPage extends RearchConsumer {
               Text(bubble.topic!, style: const TextStyle(fontSize: 12)),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Bubble details',
+            icon: const Icon(Icons.info_outline),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => BubbleDetailsPage(bubble: bubble),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [

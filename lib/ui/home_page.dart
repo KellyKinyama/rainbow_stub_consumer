@@ -5,6 +5,7 @@ import 'package:rearch/rearch.dart';
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/connectivity_capsule.dart';
 import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
 import 'bubbles_tab.dart';
@@ -25,6 +26,7 @@ class HomePage extends RearchConsumer {
     // ignored — the capsule handles retries + logout deregister.
     use(pushCapsule);
     final permissions = use(permissionsCapsule);
+    final online = use(connectivityCapsule);
     final (tab, setTab) = use.state<int>(0);
 
     const pages = [ConversationsTab(), ContactsTab(), BubblesTab()];
@@ -83,11 +85,17 @@ class HomePage extends RearchConsumer {
       body: permissions.anyDenied
           ? Column(
               children: [
+                if (!online) const _OfflineBanner(),
                 _PermissionsBanner(state: permissions),
                 Expanded(child: pages[tab]),
               ],
             )
-          : pages[tab],
+          : Column(
+              children: [
+                if (!online) const _OfflineBanner(),
+                Expanded(child: pages[tab]),
+              ],
+            ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: setTab,
@@ -141,3 +149,32 @@ class _PermissionsBanner extends StatelessWidget {
     );
   }
 }
+
+class _OfflineBanner extends StatelessWidget {
+  const _OfflineBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.wifi_off, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'You are offline. Messages will send when the connection returns.',
+                style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+

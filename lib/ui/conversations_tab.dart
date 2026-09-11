@@ -47,8 +47,7 @@ class ConversationsTab extends RearchConsumer {
   }
 
   static String _subtitleFor(ConversationSummary c) {
-    final prefix =
-        c.direction == ConversationDirection.outgoing ? 'You: ' : '';
+    final prefix = c.direction == ConversationDirection.outgoing ? 'You: ' : '';
     return '$prefix${c.lastBody}';
   }
 
@@ -79,9 +78,9 @@ class ConversationsTab extends RearchConsumer {
     final peer = match.isEmpty
         ? RainbowUser(id: peerId, loginEmail: peerId)
         : match.first.peer;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => ChatPage(peer: peer)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => ChatPage(peer: peer)));
   }
 }
 

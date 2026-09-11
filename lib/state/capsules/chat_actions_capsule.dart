@@ -16,6 +16,12 @@ class ChatActions {
     required this.joinMuc,
     required this.setMyPresence,
     required this.createBubble,
+    required this.updateBubble,
+    required this.deleteBubble,
+    required this.inviteToBubble,
+    required this.acceptBubbleInvitation,
+    required this.declineBubbleInvitation,
+    required this.leaveBubble,
     required this.sendChatState,
     required this.sendPeerFile,
     required this.sendGroupFile,
@@ -40,6 +46,24 @@ class ChatActions {
   final Future<void> Function(String show, {String? status}) setMyPresence;
   final Future<RainbowBubble> Function(String name, {String? topic})
   createBubble;
+  final Future<RainbowBubble> Function(
+    RainbowBubble bubble, {
+    String? name,
+    String? topic,
+  })
+  updateBubble;
+  final Future<void> Function(RainbowBubble bubble) deleteBubble;
+  final Future<RainbowBubble> Function(
+    RainbowBubble bubble, {
+    String? userId,
+    String? loginEmail,
+  })
+  inviteToBubble;
+  final Future<RainbowBubble> Function(RainbowBubble bubble)
+  acceptBubbleInvitation;
+  final Future<RainbowBubble> Function(RainbowBubble bubble)
+  declineBubbleInvitation;
+  final Future<RainbowBubble> Function(RainbowBubble bubble) leaveBubble;
   final void Function(RainbowUser peer, String state) sendChatState;
   final Future<void> Function(
     RainbowUser peer, {
@@ -159,6 +183,44 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
 
   Future<RainbowBubble> createBubble(String name, {String? topic}) =>
       rest.createRoom(name, topic: topic);
+
+  Future<RainbowBubble> updateBubble(
+    RainbowBubble bubble, {
+    String? name,
+    String? topic,
+  }) =>
+      rest.updateRoom(bubble.id, name: name, topic: topic);
+
+  Future<void> deleteBubble(RainbowBubble bubble) =>
+      rest.deleteRoom(bubble.id);
+
+  Future<RainbowBubble> inviteToBubble(
+    RainbowBubble bubble, {
+    String? userId,
+    String? loginEmail,
+  }) =>
+      rest.inviteToRoom(bubble.id, userId: userId, loginEmail: loginEmail);
+
+  Future<RainbowBubble> _setMyStatus(RainbowBubble bubble, String status) {
+    final myId = auth.me?.id;
+    if (myId == null) {
+      throw StateError('No signed-in user to set bubble status for.');
+    }
+    return rest.setRoomMemberStatus(
+      bubbleId: bubble.id,
+      userId: myId,
+      status: status,
+    );
+  }
+
+  Future<RainbowBubble> acceptBubbleInvitation(RainbowBubble bubble) =>
+      _setMyStatus(bubble, 'accepted');
+
+  Future<RainbowBubble> declineBubbleInvitation(RainbowBubble bubble) =>
+      _setMyStatus(bubble, 'declined');
+
+  Future<RainbowBubble> leaveBubble(RainbowBubble bubble) =>
+      _setMyStatus(bubble, 'declined');
 
   void sendChatState(RainbowUser peer, String state) {
     xmpp.sendChatState(toBareJid: peerThreadKey(peer), state: state);
@@ -353,6 +415,12 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     joinMuc: joinMuc,
     setMyPresence: setMyPresence,
     createBubble: createBubble,
+    updateBubble: updateBubble,
+    deleteBubble: deleteBubble,
+    inviteToBubble: inviteToBubble,
+    acceptBubbleInvitation: acceptBubbleInvitation,
+    declineBubbleInvitation: declineBubbleInvitation,
+    leaveBubble: leaveBubble,
     sendChatState: sendChatState,
     sendPeerFile: sendPeerFile,
     sendGroupFile: sendGroupFile,

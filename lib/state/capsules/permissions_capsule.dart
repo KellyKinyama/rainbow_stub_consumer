@@ -89,7 +89,8 @@ PermissionSlot _slot(PermissionStatus? s) {
   return PermissionSlot.notAsked;
 }
 
-PermissionsState _webUnsupported(Future<void> Function() ask) => PermissionsState(
+PermissionsState _webUnsupported(Future<void> Function() ask) =>
+    PermissionsState(
       camera: PermissionSlot.unsupported,
       microphone: PermissionSlot.unsupported,
       notifications: PermissionSlot.unsupported,

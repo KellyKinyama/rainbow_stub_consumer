@@ -43,16 +43,18 @@ class CallLogPage extends RearchConsumer {
         ),
       ),
       body: switch (entriesAsync) {
-        AsyncLoading<List<CallLogEntry>>() =>
-          const Center(child: CircularProgressIndicator()),
-        AsyncError<List<CallLogEntry>>(:final error) =>
-          Center(child: Text('Could not load call log: $error')),
+        AsyncLoading<List<CallLogEntry>>() => const Center(
+          child: CircularProgressIndicator(),
+        ),
+        AsyncError<List<CallLogEntry>>(:final error) => Center(
+          child: Text('Could not load call log: $error'),
+        ),
         AsyncData<List<CallLogEntry>>(:final data) => _CallList(
-            entries: filter == _Filter.missed
-                ? data.where((e) => e.isMissed).toList(growable: false)
-                : data,
-            onDelete: controller.delete,
-          ),
+          entries: filter == _Filter.missed
+              ? data.where((e) => e.isMissed).toList(growable: false)
+              : data,
+          onDelete: controller.delete,
+        ),
       },
     );
   }
@@ -107,8 +109,7 @@ class _CallList extends StatelessWidget {
   }
 
   static String _subtitleFor(CallLogEntry e) {
-    final direction =
-        e.isOutgoing ? 'Outgoing' : 'Incoming';
+    final direction = e.isOutgoing ? 'Outgoing' : 'Incoming';
     final state = switch (e.state) {
       'answered' => e.durationMs == 0 ? 'ended' : _formatDuration(e.durationMs),
       'missed' => 'missed',
