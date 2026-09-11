@@ -69,12 +69,10 @@ PushRegistration pushCapsule(CapsuleHandle use) {
         );
       }
     }());
-    return () {
-      final token = slot.value.token;
-      if (token != null) {
-        unawaited(rest.deletePushToken(userId: me.id, token: token));
-      }
-    };
+    // Cleanup is the auth controller's job during signOut: it needs to
+    // await the DELETE before rest.logout() invalidates the bearer
+    // server-side. See authControllerCapsule.signOut.
+    return null;
   }, [me?.id, rest]);
 
   return slot.value;

@@ -39,6 +39,7 @@ enum ConversationDirection { incoming, outgoing }
 /// server-side conversations endpoint (see ROADMAP § 1.3).
 List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
   final events = use(xmppEventsCapsule);
+  final xmpp = use(xmppCapsule);
   final myId = use(authCapsule).me?.id;
   final roster = switch (use(rosterCapsule)) {
     AsyncData<List<RosterEntry>>(:final data) => data,
@@ -60,32 +61,78 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
       slot.value = const <String, ConversationSummary>{};
       return null;
     }
-    final StreamSubscription<XmppChatMessage> sub = events
+
+    void fold({
+      required String from,
+      required String to,
+      required String body,
+      required DateTime sentAt,
+    }) {
+      if (body.isEmpty) return;
+      final fromLocal = _localPart(from);
+      final toLocal = _localPart(to);
+      final peerId = fromLocal == myId ? toLocal : fromLocal;
+      if (peerId.isEmpty) return;
+      final direction = fromLocal == myId
+          ? ConversationDirection.outgoing
+          : ConversationDirection.incoming;
+      final existing = slot.value[peerId];
+      if (existing != null && existing.lastAt.isAfter(sentAt)) return;
+      slot.value = <String, ConversationSummary>{
+        ...slot.value,
+        peerId: ConversationSummary(
+          peerId: peerId,
+          peerDisplay: peerDisplayFor(peerId),
+          lastBody: body,
+          lastAt: sentAt,
+          direction: direction,
+        ),
+      };
+    }
+
+    final subLive = events
         .where((e) => e is XmppChatMessage)
         .cast<XmppChatMessage>()
-        .where((e) => !e.isGroupChat && e.body.isNotEmpty)
-        .listen((e) {
-          final fromLocal = _localPart(e.from);
-          final toLocal = _localPart(e.to);
-          // Peer is whoever is NOT me on the stanza.
-          final peerId = fromLocal == myId ? toLocal : fromLocal;
-          if (peerId.isEmpty) return;
-          final direction = fromLocal == myId
-              ? ConversationDirection.outgoing
-              : ConversationDirection.incoming;
-          slot.value = <String, ConversationSummary>{
-            ...slot.value,
-            peerId: ConversationSummary(
-              peerId: peerId,
-              peerDisplay: peerDisplayFor(peerId),
-              lastBody: e.body,
-              lastAt: DateTime.now(),
-              direction: direction,
-            ),
-          };
-        });
-    return sub.cancel;
-  }, [events, myId]);
+        .where((e) => !e.isGroupChat)
+        .listen(
+          (e) => fold(
+            from: e.from,
+            to: e.to,
+            body: e.body,
+            sentAt: DateTime.now(),
+          ),
+        );
+
+    final subMam = events
+        .where((e) => e is XmppMamMessage)
+        .cast<XmppMamMessage>()
+        .where((e) => !e.isGroupChat)
+        .listen(
+          (e) => fold(from: e.from, to: e.to, body: e.body, sentAt: e.sentAt),
+        );
+
+    final subConnected = events.where((e) => e is XmppConnected).listen((_) {
+      // XEP-0313 bootstrap: pull the last 50 archived 1:1 stanzas so
+      // Recent shows past conversations after a fresh sign-in.
+      try {
+        xmpp.queryMamAll(max: 50);
+      } catch (_) {}
+    });
+
+    // Fire once on mount if we're already connected (the effect may
+    // run after XmppConnected has already emitted).
+    if (xmpp.isConnected) {
+      try {
+        xmpp.queryMamAll(max: 50);
+      } catch (_) {}
+    }
+
+    return () {
+      subLive.cancel();
+      subMam.cancel();
+      subConnected.cancel();
+    };
+  }, [events, xmpp, myId]);
 
   // Roster may arrive after some XmppChatMessage events (bootstrap race
   // or a same-connection add). Re-resolve display names on every build

@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
+import '../../rainbow/xmpp_client.dart';
 import 'auth_state_capsule.dart';
 import 'rest_capsule.dart';
+import 'xmpp_capsule.dart';
 
 class RosterRefresher {
   const RosterRefresher(this.version, this.bump);
@@ -14,6 +18,14 @@ class RosterRefresher {
 /// `ChatActions.addContact`) invalidate the roster cache.
 RosterRefresher rosterRefresherCapsule(CapsuleHandle use) {
   final (v, setV) = use.state<int>(0);
+  final events = use(xmppEventsCapsule);
+  use.effect(() {
+    final StreamSubscription<XmppRosterPush> sub = events
+        .where((e) => e is XmppRosterPush)
+        .cast<XmppRosterPush>()
+        .listen((_) => setV(v + 1));
+    return sub.cancel;
+  }, [events, v]);
   return RosterRefresher(v, () => setV(v + 1));
 }
 

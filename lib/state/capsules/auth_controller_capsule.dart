@@ -7,6 +7,7 @@ import '../../rainbow/xmpp_client.dart';
 import '../models/auth_state.dart';
 import 'auth_state_capsule.dart';
 import 'messages_capsule.dart';
+import 'push_capsule.dart';
 import 'rest_capsule.dart';
 import 'xmpp_capsule.dart';
 
@@ -51,6 +52,7 @@ AuthController authControllerCapsule(CapsuleHandle use) {
   final rest = use(restCapsule);
   final xmpp = use(xmppCapsule);
   final authSlot = use(authStateCapsule);
+  final push = use(pushCapsule);
 
   // Silent auto-reconnect: when the XMPP WebSocket drops while the
   // user is still signed in, prefer XEP-0198 resume; fall back to a
@@ -117,6 +119,22 @@ AuthController authControllerCapsule(CapsuleHandle use) {
   }
 
   Future<void> signOut() async {
+    // Ordering matters: delete the push token FIRST while the bearer
+    // is still valid server-side, then close the XMPP socket, then
+    // hit rest.logout() which invalidates the token, then flip the
+    // slot and drop the local bearer.
+    final currentUserId = authSlot.value.me?.id;
+    final currentPushToken = push.token;
+    if (currentUserId != null && currentPushToken != null) {
+      try {
+        await rest.deletePushToken(
+          userId: currentUserId,
+          token: currentPushToken,
+        );
+      } catch (_) {
+        // Best-effort; the token may already be gone server-side.
+      }
+    }
     try {
       await xmpp.disconnect();
     } catch (_) {
@@ -127,11 +145,9 @@ AuthController authControllerCapsule(CapsuleHandle use) {
     } catch (_) {
       // ditto — server may already have invalidated the session.
     }
-    rest.setBearer(null);
-    // Drop per-thread chat controllers + MAM cursors so the next signed-in
-    // user builds fresh capsules and re-queries MAM.
     resetMessagesCapsuleCache();
     authSlot.value = const AuthState.signedOut();
+    rest.setBearer(null);
   }
 
   Future<RainbowUser?> refreshMe() async {

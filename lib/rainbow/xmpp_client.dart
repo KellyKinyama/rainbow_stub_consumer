@@ -214,6 +214,23 @@ class XmppMucCallMarker extends XmppEvent {
   final String sid;
 }
 
+/// Server-initiated roster push (`<iq type="set"><query
+/// xmlns="jabber:iq:roster"><item .../></query></iq>`). The XMPP
+/// client emits one of these per `<item/>` element so higher-level
+/// state (e.g. the roster capsule) can refresh in-place.
+class XmppRosterPush extends XmppEvent {
+  const XmppRosterPush({
+    required this.peerBareJid,
+    required this.name,
+    required this.subscription,
+  });
+  final String peerBareJid;
+  final String name;
+  final String subscription;
+
+  bool get isRemove => subscription == 'remove';
+}
+
 class RainbowXmppClient {
   RainbowXmppClient({
     required this.wsUrl,
@@ -559,6 +576,29 @@ class RainbowXmppClient {
     // MAM <fin/> and Jingle are the only iqs that reach the routing
     // loop; everything else (bind, sm enable, roster get) is consumed
     // synchronously during connect() / resume().
+    final query = el.getElement('query');
+    if (query != null && _hasXmlns(query, 'jabber:iq:roster')) {
+      for (final item in query.findElements('item')) {
+        final jid = item.getAttribute('jid') ?? '';
+        if (jid.isEmpty) continue;
+        _events.add(
+          XmppRosterPush(
+            peerBareJid: _bareOf(jid),
+            name: item.getAttribute('name') ?? '',
+            subscription: item.getAttribute('subscription') ?? 'both',
+          ),
+        );
+      }
+      // XEP-0237: acknowledge the push so the server can drop retransmit copies.
+      final id = el.getAttribute('id');
+      final from = el.getAttribute('from');
+      if (id != null) {
+        _channel?.sink.add(
+          '<iq type="result" id="$id"${from != null ? ' to="$from"' : ''}/>',
+        );
+      }
+      return;
+    }
     final fin = el.getElement('fin');
     if (fin != null && _isMamNamespace(fin)) {
       final set = fin.getElement('set');
@@ -1021,6 +1061,25 @@ class RainbowXmppClient {
       '<field var="with"><value>${_esc(peerBareJid)}</value></field>'
       '</x>'
       '<set xmlns="http://jabber.org/protocol/rsm"><max>$max</max>$beforeEl</set>'
+      '</query></iq>',
+    );
+    return qid;
+  }
+
+  /// XEP-0313 MAM query with no `with` field — returns the last [max]
+  /// 1:1 archived stanzas across all peers. Used by the Recent tab to
+  /// hydrate on sign-in so past conversations survive a sign-out.
+  String queryMamAll({int max = 50}) {
+    final qid = 'mam-${DateTime.now().microsecondsSinceEpoch}';
+    _send(
+      '<iq type="set" id="$qid">'
+      '<query xmlns="urn:xmpp:mam:2" queryid="$qid">'
+      '<x xmlns="jabber:x:data" type="submit">'
+      '<field var="FORM_TYPE" type="hidden">'
+      '<value>urn:xmpp:mam:2</value>'
+      '</field>'
+      '</x>'
+      '<set xmlns="http://jabber.org/protocol/rsm"><max>$max</max></set>'
       '</query></iq>',
     );
     return qid;
