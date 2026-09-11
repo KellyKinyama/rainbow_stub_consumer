@@ -9,6 +9,8 @@ import '../session_store.dart';
 import 'auth_state_capsule.dart';
 import 'conversations_mirror_capsule.dart';
 import 'messages_capsule.dart';
+import 'messages_mirror_capsule.dart';
+import 'outgoing_queue_capsule.dart';
 import 'push_capsule.dart';
 import 'rest_capsule.dart';
 import 'session_store_capsule.dart';
@@ -58,6 +60,8 @@ AuthController authControllerCapsule(CapsuleHandle use) {
   final push = use(pushCapsule);
   final store = use(sessionStoreCapsule);
   final conversationsMirror = use(conversationsMirrorCapsule);
+  final messagesMirror = use(messagesMirrorCapsule);
+  final outbox = use(outgoingQueueCapsule);
   final booted = use.data<bool>(false);
 
   Future<void> restore() async {
@@ -206,6 +210,8 @@ AuthController authControllerCapsule(CapsuleHandle use) {
     unawaited(store.clear());
     if (signedOutId != null) {
       unawaited(conversationsMirror.clear(signedOutId));
+      unawaited(messagesMirror.clearUser(signedOutId));
+      unawaited(outbox.clear(signedOutId));
     }
   }
 

@@ -6,7 +6,9 @@ import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
 import '../../rainbow/xmpp_client.dart';
+import '../messages_mirror.dart';
 import 'auth_state_capsule.dart';
+import 'messages_mirror_capsule.dart';
 import 'xmpp_capsule.dart';
 
 /// Bare-JID of the peer or bubble whose thread we want to watch. For MUC
@@ -152,6 +154,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
       final events = use(xmppEventsCapsule);
       final xmpp = use(xmppCapsule);
       final myUserId = use(authCapsule).me?.id;
+      final mirror = use(messagesMirrorCapsule);
       final controller = use.disposable<InMemoryChatController>(
         InMemoryChatController.new,
         (c) => c.dispose(),
@@ -164,6 +167,16 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
       // on the `with` field's domain.
       use.callonce(() {
         if (myUserId != null && myGeneration == _cacheGeneration) {
+          // Hydrate from the on-disk mirror first so the chat shows
+          // history immediately; MAM below fills any gaps.
+          unawaited(_hydrateFromMirror(
+            mirror: mirror,
+            userId: myUserId,
+            threadKey: threadKey,
+            controller: controller,
+            generation: myGeneration,
+            isMuc: isMuc,
+          ));
           Timer.run(() => xmpp.queryMamWith(threadKey, max: 50));
         }
         return null;
@@ -200,6 +213,16 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               ? (myUserId ?? 'me')
               : senderIdFor(cm.from, isGroupChat: isGroupChat);
           insertOnce(_toChatUiMessage(cm, senderId), index: index);
+          // Persist text bodies only; attachments still need a fresh
+          // MAM hydrate to re-issue the download URL.
+          if (myUserId != null && cm.body.isNotEmpty) {
+            _bufferForMirror(threadKey: threadKey, cm: cm);
+            _saveThreadDebounced(
+              mirror: mirror,
+              userId: myUserId,
+              threadKey: threadKey,
+            );
+          }
         }
 
         void append(ChatMessage cm) {
@@ -605,7 +628,102 @@ void resetMessagesCapsuleCache() {
   _appenders.clear();
   _threadUpdaters.clear();
   _mamPageState.clear();
+  for (final t in _mirrorFlush.values) {
+    t.cancel();
+  }
+  _mirrorFlush.clear();
+  _mirrorBuffer.clear();
   _cacheGeneration++;
+}
+
+// Per-thread in-memory copy of what should land on disk, keyed by
+// stanza id. Flushed to `messagesMirrorCapsule` on a short debounce
+// so bursts (MAM hydration, group-chat backlogs) collapse into one
+// write.
+final Map<String, Map<String, StoredThreadMessage>> _mirrorBuffer = {};
+final Map<String, Timer> _mirrorFlush = {};
+
+void _saveThreadDebounced({
+  required MessagesMirror mirror,
+  required String userId,
+  required String threadKey,
+}) {
+  _mirrorFlush[threadKey]?.cancel();
+  _mirrorFlush[threadKey] = Timer(const Duration(milliseconds: 400), () {
+    final buffer = _mirrorBuffer[threadKey];
+    if (buffer == null || buffer.isEmpty) return;
+    final list = buffer.values.toList()
+      ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+    unawaited(mirror.saveThread(userId, threadKey, list));
+  });
+}
+
+/// Registers a stanza in the per-thread buffer. Called from the
+/// live/MAM/local insert paths so the debounced flush can persist
+/// whatever the controller currently shows.
+void _bufferForMirror({
+  required String threadKey,
+  required ChatMessage cm,
+}) {
+  final buf = _mirrorBuffer.putIfAbsent(
+    threadKey,
+    () => <String, StoredThreadMessage>{},
+  );
+  buf[cm.id] = StoredThreadMessage(
+    id: cm.id,
+    body: cm.body,
+    from: cm.from,
+    to: cm.to,
+    sentAt: cm.sentAt,
+    isMine: cm.isMine,
+    replyToStanzaId: cm.replyToStanzaId,
+  );
+}
+
+Future<void> _hydrateFromMirror({
+  required MessagesMirror mirror,
+  required String userId,
+  required String threadKey,
+  required InMemoryChatController controller,
+  required int generation,
+  required bool isMuc,
+}) async {
+  final stored = await mirror.read(userId, threadKey);
+  if (stored.isEmpty) return;
+  if (generation != _cacheGeneration) return;
+  // Feed stored messages back through the appender registry so both
+  // messagesCapsule and chatControllerCapsule stay in sync. Order
+  // ascending so the chat shows in chronological order.
+  final sorted = List<StoredThreadMessage>.from(stored)
+    ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+  for (final s in sorted) {
+    if (controller.messages.any((existing) => existing.id == s.id)) continue;
+    final senderId = isMuc
+        ? _resourcePart(s.from)
+        : _localPart(s.from);
+    final authorId = s.isMine ? userId : senderId;
+    final msg = _toChatUiMessage(
+      ChatMessage(
+        id: s.id,
+        body: s.body,
+        from: s.from,
+        to: s.to,
+        sentAt: s.sentAt,
+        isMine: s.isMine,
+        replyToStanzaId: s.replyToStanzaId,
+      ),
+      authorId,
+    );
+    await controller.insertMessage(msg);
+  }
+  // Seed the buffer so subsequent saves have the full picture.
+  final buf = _mirrorBuffer.putIfAbsent(
+    threadKey,
+    () => <String, StoredThreadMessage>{},
+  );
+  for (final s in sorted) {
+    buf[s.id] = s;
+  }
 }
 
 Message _toChatUiMessage(ChatMessage cm, String authorId) {

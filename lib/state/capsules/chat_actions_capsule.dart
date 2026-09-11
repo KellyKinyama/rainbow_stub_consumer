@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
 import '../../rainbow/xmpp_client.dart';
+import '../outgoing_queue.dart';
 import 'auth_state_capsule.dart';
 import 'config_capsule.dart';
 import 'messages_capsule.dart';
+import 'outgoing_queue_capsule.dart';
 import 'rest_capsule.dart';
 import 'xmpp_capsule.dart';
 
@@ -118,9 +122,45 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
   final rest = use(restCapsule);
   final xmpp = use(xmppCapsule);
   final auth = use(authCapsule);
+  final outbox = use(outgoingQueueCapsule);
 
   String peerThreadKey(RainbowUser peer) => '${peer.id}@${config.xmppDomain}';
   String bubbleThreadKey(RainbowBubble b) => '${b.id}@muc.${config.xmppDomain}';
+
+  // Drain the persistent outbox on every XmppConnected — a fresh
+  // sign-in or a reconnect after a network gap both replay queued
+  // sends in FIFO order.
+  use.effect(() {
+    final sub = xmpp.events.where((e) => e is XmppConnected).listen((_) async {
+      final me = auth.me;
+      if (me == null) return;
+      final queued = await outbox.readAll(me.id);
+      for (final q in queued) {
+        try {
+          if (q.isGroupChat) {
+            xmpp.sendGroupChat(
+              roomJid: q.threadKey,
+              body: q.body,
+              id: q.id,
+              replyToStanzaId: q.replyToStanzaId,
+            );
+          } else {
+            xmpp.sendChat(
+              toBareJid: q.threadKey,
+              body: q.body,
+              id: q.id,
+              replyToStanzaId: q.replyToStanzaId,
+            );
+          }
+          await outbox.remove(me.id, q.id);
+        } on Object {
+          // Leave the entry queued; next XmppConnected will retry.
+          break;
+        }
+      }
+    });
+    return sub.cancel;
+  }, [xmpp, auth.me?.id]);
 
   void sendPeer(RainbowUser peer, String body, {String? replyToStanzaId}) {
     final key = peerThreadKey(peer);
@@ -131,6 +171,24 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
       id: stanzaId,
       replyToStanzaId: replyToStanzaId,
     );
+    if (!xmpp.isConnected && auth.me != null) {
+      // Belt-and-braces persistence: queue for replay on the next
+      // XmppConnected. xmpp.sendChat above was a no-op because the
+      // socket was null.
+      unawaited(
+        outbox.add(
+          auth.me!.id,
+          QueuedSend(
+            id: stanzaId,
+            threadKey: key,
+            isGroupChat: false,
+            body: body,
+            queuedAt: DateTime.now(),
+            replyToStanzaId: replyToStanzaId,
+          ),
+        ),
+      );
+    }
     appendLocalMessage(
       key,
       ChatMessage(
@@ -155,6 +213,21 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
       id: stanzaId,
       replyToStanzaId: replyToStanzaId,
     );
+    if (!xmpp.isConnected && auth.me != null) {
+      unawaited(
+        outbox.add(
+          auth.me!.id,
+          QueuedSend(
+            id: stanzaId,
+            threadKey: key,
+            isGroupChat: true,
+            body: body,
+            queuedAt: DateTime.now(),
+            replyToStanzaId: replyToStanzaId,
+          ),
+        ),
+      );
+    }
     appendLocalMessage(
       key,
       ChatMessage(

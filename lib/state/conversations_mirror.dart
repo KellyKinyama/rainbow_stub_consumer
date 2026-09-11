@@ -21,12 +21,12 @@ class StoredConversation {
   final bool directionOutgoing;
 
   Map<String, dynamic> toJson() => {
-        'peerId': peerId,
-        'peerDisplay': peerDisplay,
-        'lastBody': lastBody,
-        'lastAt': lastAt.toIso8601String(),
-        'directionOutgoing': directionOutgoing,
-      };
+    'peerId': peerId,
+    'peerDisplay': peerDisplay,
+    'lastBody': lastBody,
+    'lastAt': lastAt.toIso8601String(),
+    'directionOutgoing': directionOutgoing,
+  };
 
   static StoredConversation? fromJson(Object? raw) {
     if (raw is! Map) return null;
