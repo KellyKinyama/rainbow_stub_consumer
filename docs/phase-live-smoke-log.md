@@ -111,3 +111,39 @@ Alice → Bob worked because Bob's `xmppDomain=localhost` did happen to match th
 - Fix the camera/mic tracks-not-stopped bug at `FlutterWebRtcAdapter.dispose()` and on `session-terminate`. Iterate `_localStream.getTracks()`, call `track.stop()`, null out `_localStream`, notify the UI. ~10 lines.
 - If a live media path off the emulator is needed, either wire coturn (see M-7 sketch in `docs/webrtc-roadmap.md`) or run the same client on a physical Android on the same Wi-Fi as the browser.
 - Consider a config toggle so the diagnostics overlay can be enabled in release builds too — useful for QA smoke runs where debug builds are impractical.
+
+## 2026-09-11 addendum — call polish + parity audit
+
+A follow-up session picked up loose ends the first live smoke surfaced and closed the two remaining M-track bugs.
+
+### 7. WebRTC bugs fixed (all committed on `feat/chat-ui-rearch`)
+
+| # | Commit | Summary |
+|---|---|---|
+| 22 | `a2d09f8` | `call: stop camera + mic tracks on hang-up` — `_FlutterWebRtcSession.close()` now iterates every track, `stop()`s each, disposes the stream, nulls both handles, then closes the `RTCPeerConnection`. Camera LED / browser tab indicator clears the moment either side hangs up. |
+| 23 | `ffc16be` | `call: fix video on web (base64 SDP + trickle-ICE buffer)` — SDP inside `<rainbow-sdp>` moved from CDATA to base64 element text so dart2js + `xml` package don't crash inside `visitCDATAEvent`. Trickle-ICE candidates buffered on `ActiveCall.pendingCandidates` until `setRemoteDescription` completes on both incoming and outgoing paths. |
+| 24 | `3b931b9` | `call: reliable CallScreen push + remote-track rebind on web` — four fixes: rootNavigatorKey wired to MaterialApp.navigatorKey so `CallOverlay` inside `MaterialApp.builder` can push a route; `pc.onIceConnectionState` mirrored as fallback for browsers where `onConnectionState` fires only on the caller; `RtcRemoteTrackAdded` / `RtcLocalMediaReady` events now trigger `notifyListeners()` on the CallManager so `ListenableBuilder` rebuilds and `RTCVideoRenderer.srcObject` gets bound; explicit generic literals across `presence_capsule` and `messages_capsule` remove `TypeError: R[_as] is not a function` on dart2js DDC. |
+| 25 | `cf565d4` | `call: graceful camera-fail degradation to audio-only` — `_attachLocalMedia` catches the failure when `getUserMedia({audio, video: true})` throws `NotReadableError` (typical when a second Chrome window on Windows tries to grab the camera) and retries with `video: false`. `_LocalVideoPreview` + `_RemoteVideo` render a black tile with an `Icons.videocam_off` badge when the stream has no video tracks. Audio + signaling still complete. |
+| 26 | `911aba3` | `call: keep RTCVideoView mounted so remote audio always plays` — On Flutter web the `RTCVideoView` is backed by a `<video>` element that also plays the remote audio track. Previously we swapped it out for `_AudioAvatar` when there was no picture; that unmounted the `<video>` and killed audio. Now the `RTCVideoView` is anchored at 1×1 behind whatever placeholder we render, so audio flows for audio-only calls and camera-degraded video calls alike. |
+
+### 8. Ringer
+
+| # | Commit | Summary |
+|---|---|---|
+| 27 | `e7ff4ba` | `call: audible ringer via flutter_ringtone_player` — `SystemRinger` implementation delegating to the platform ringtone on Android + iOS, plus a haptic pulse in parallel. Production `ringerCapsule` factory switched from `HapticRinger` to `SystemRinger`. |
+| 28 | `bf6647d` | `call: audible ringer on web via looped WAV data URL` — `flutter_ringtone_player` has no web support and Web Audio API contexts get suspended when the callee tab loses focus, so a Timer-driven `AudioContext` beep only rings while the tab is on top. Bake a 1.5 s beep+silence WAV as a base64 data URL at first use, assign it to an `HTMLAudioElement` with `loop=true`, and drive start/stop through the `_web_ringer.dart` conditional-import (native → no-op stubs). `HTMLAudioElement` keeps playing across tab-focus changes so the callee hears the ring even when their tab is minimised. |
+
+### 9. Parity audit
+
+Ran the `Explore` subagent against `c:\www\node\Rainbow-React-Native-Samples\src` to enumerate what the reference RN client ships that our Flutter client doesn't yet. Findings folded into `c:\www\dart\rainbow-stub\ROADMAP.md` § 7 — ten open items ranked by user impact. Flutter client is ahead on reactions, edits, and MAM final-page semantics; behind on registration / forgot-password, profile view+edit, 1:1 conversations list, call history, bubble management, file browser, forward/copy, permissions bootstrap, global search, and group-call advanced controls. Suggested next sprint: 7.1 + 7.2 + 7.7 (registration, profile, forward/copy) — all wire-ready on the server, combined estimate 3–4 days.
+
+### 10. Live evidence (updated matrix)
+
+Browser ↔ browser (two Chrome windows, one incognito):
+
+- Sign in as alice / bob, roster + presence load.
+- 1:1 chat both directions, reactions, edits, retracts, MAM scroll.
+- 1:1 audio call — both sides hear each other, CallScreen full-bleed on both tabs.
+- 1:1 video call — whichever tab grabs the camera first shows real video; the second one degrades to audio-only with a `videocam_off` placeholder on both preview slots. Audio flows both directions in every combination.
+- Web ringer — audible beep loop even with the callee tab minimised.
+- Hang-up teardown — camera indicator clears within one animation frame.
