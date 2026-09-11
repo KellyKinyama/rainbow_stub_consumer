@@ -78,6 +78,7 @@ class BubblesTab extends RearchConsumer {
     final invites = use(bubbleInvitationsCapsule);
     final actions = use(chatActionsCapsule);
     final unread = use(unreadCapsule);
+    final refresher = use(bubblesRefresherCapsule);
     final (query, setQuery) = use.state<String>('');
     final normalized = query.toLowerCase().trim();
     bool matches(RainbowBubble b) {
@@ -117,7 +118,15 @@ class BubblesTab extends RearchConsumer {
     };
 
     return Scaffold(
-      body: body,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          refresher.bump();
+          await invites.refresh();
+          // Await a beat so the pull-to-refresh spinner is visibly held.
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+        },
+        child: body,
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _createBubble(context, actions),
         child: const Icon(Icons.add),

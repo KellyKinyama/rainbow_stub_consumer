@@ -13,6 +13,7 @@ import '../state/capsules/call_manager_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
+import '../state/capsules/active_thread_capsule.dart';
 import '../state/capsules/presence_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import '../state/models/presence.dart';
@@ -35,6 +36,7 @@ class ChatPage extends RearchConsumer {
     final controller = use(chatControllerCapsule(threadKey));
     final peerIsTyping = use(typingCapsule(threadKey));
     final presence = use(presenceCapsule);
+    final activeThread = use(activeThreadCapsule);
     final unread = use(unreadCapsule);
     final input = use.textEditingController();
     final (replyingTo, setReplyingTo) = use.state<Message?>(null);
@@ -46,7 +48,10 @@ class ChatPage extends RearchConsumer {
     // Clear unread badge for this peer once the page is open.
     use.effect(() {
       unread.markRead(peer.id);
-      return null;
+      activeThread.value = peer.id;
+      return () {
+        if (activeThread.value == peer.id) activeThread.value = null;
+      };
     }, [peer.id]);
 
     use.effect(() {

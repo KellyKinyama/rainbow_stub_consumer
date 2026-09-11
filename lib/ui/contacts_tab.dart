@@ -115,7 +115,15 @@ class ContactsTab extends RearchConsumer {
       body: Column(
         children: [
           _SearchField(hint: 'Search contacts', onChanged: setQuery),
-          Expanded(child: list),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                refresher.bump();
+                await Future<void>.delayed(const Duration(milliseconds: 300));
+              },
+              child: list,
+            ),
+          ),
         ],
       ),
       floatingActionButton: FloatingActionButton(

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
 import 'package:rearch/rearch.dart';
 
+import '../rainbow/xmpp_client.dart';
+import '../state/capsules/active_thread_capsule.dart';
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/bubbles_capsule.dart';
@@ -10,7 +12,9 @@ import '../state/capsules/connectivity_capsule.dart';
 import '../state/capsules/outbox_count_capsule.dart';
 import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
+import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
+import '../state/capsules/xmpp_capsule.dart';
 import 'bubbles_tab.dart';
 import 'call_log_page.dart';
 import 'contacts_tab.dart';
@@ -32,6 +36,13 @@ class HomePage extends RearchConsumer {
     final online = use(connectivityCapsule);
     final outboxCount = use(outboxCountCapsule);
     final unread = use(unreadCapsule);
+    final activeThread = use(activeThreadCapsule);
+    final events = use(xmppEventsCapsule);
+    final rosterAsync = use(rosterCapsule);
+    final roster = switch (rosterAsync) {
+      AsyncData(:final data) => data,
+      _ => const [],
+    };
     final bubblesAsync = use(bubblesCapsule);
     final bubbleIds = switch (bubblesAsync) {
       AsyncData(:final data) => data.map((b) => b.id).toSet(),
@@ -48,6 +59,50 @@ class HomePage extends RearchConsumer {
     });
     final (tab, setTab) = use.state<int>(0);
 
+    // In-app snackbar toast for incoming 1:1 or MUC messages when
+    // the user is NOT currently inside the target thread. Suppresses
+    // own carbons and empty bodies.
+    use.effect(() {
+      final myId = me?.id;
+      if (myId == null) return null;
+      final scaffold = ScaffoldMessenger.of(context);
+      final sub = events
+          .where((e) => e is XmppChatMessage)
+          .cast<XmppChatMessage>()
+          .where((e) => e.body.isNotEmpty)
+          .listen((e) {
+            final fromLocal = _localPart(e.from);
+            if (fromLocal == myId) return;
+            final key = e.isGroupChat ? _localPart(e.to) : fromLocal;
+            if (key.isEmpty || key == activeThread.value) return;
+            String label = key;
+            for (final r in roster) {
+              if (r.peer.id == key) {
+                label = r.peer.display;
+                break;
+              }
+            }
+            scaffold.showSnackBar(
+              SnackBar(
+                behavior: SnackBarBehavior.floating,
+                duration: const Duration(seconds: 3),
+                content: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    Text(e.body, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            );
+          });
+      return sub.cancel;
+    }, [events, me?.id, activeThread.value]);
+
     const pages = [ConversationsTab(), ContactsTab(), BubblesTab()];
     const titles = ['Recent', 'Contacts', 'Bubbles'];
 
@@ -56,11 +111,15 @@ class HomePage extends RearchConsumer {
         title: Text(titles[tab]),
         actions: [
           PopupMenuButton<String>(
-            icon: CircleAvatar(
-              child: Text(
-                me?.display.isNotEmpty == true
-                    ? me!.display[0].toUpperCase()
-                    : '?',
+            icon: Badge.count(
+              isLabelVisible: unread.total > 0,
+              count: unread.total,
+              child: CircleAvatar(
+                child: Text(
+                  me?.display.isNotEmpty == true
+                      ? me!.display[0].toUpperCase()
+                      : '?',
+                ),
               ),
             ),
             onSelected: (v) async {
@@ -224,7 +283,6 @@ class _OfflineBanner extends StatelessWidget {
   }
 }
 
-
 class _OutboxBanner extends StatelessWidget {
   const _OutboxBanner({required this.count});
   final int count;
@@ -243,8 +301,8 @@ class _OutboxBanner extends StatelessWidget {
             Expanded(
               child: Text(
                 count == 1
-                    ? '1 message queued — will send when reconnected.'
-                    : '$count messages queued — will send when reconnected.',
+                    ? '1 message queued ï¿½ will send when reconnected.'
+                    : '$count messages queued ï¿½ will send when reconnected.',
                 style: TextStyle(color: scheme.onTertiaryContainer),
               ),
             ),
@@ -253,4 +311,10 @@ class _OutboxBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+
+String _localPart(String jid) {
+  final at = jid.indexOf('@');
+  return at < 0 ? jid : jid.substring(0, at);
 }
