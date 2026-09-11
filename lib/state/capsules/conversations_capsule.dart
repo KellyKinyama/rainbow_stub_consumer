@@ -4,7 +4,9 @@ import 'package:rearch/rearch.dart';
 
 import '../../rainbow/models.dart';
 import '../../rainbow/xmpp_client.dart';
+import '../conversations_mirror.dart';
 import 'auth_state_capsule.dart';
+import 'conversations_mirror_capsule.dart';
 import 'roster_capsule.dart';
 import 'xmpp_capsule.dart';
 
@@ -41,6 +43,7 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
   final events = use(xmppEventsCapsule);
   final xmpp = use(xmppCapsule);
   final myId = use(authCapsule).me?.id;
+  final mirror = use(conversationsMirrorCapsule);
   final roster = switch (use(rosterCapsule)) {
     AsyncData<List<RosterEntry>>(:final data) => data,
     _ => const <RosterEntry>[],
@@ -48,6 +51,7 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
   final slot = use.data<Map<String, ConversationSummary>>(
     const <String, ConversationSummary>{},
   );
+  final hydrated = use.data<String?>(null);
 
   String peerDisplayFor(String peerId) {
     for (final r in roster) {
@@ -60,6 +64,45 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
     if (myId == null) {
       slot.value = const <String, ConversationSummary>{};
       return null;
+    }
+
+    // Hydrate from disk once per user before any live traffic lands.
+    if (hydrated.value != myId) {
+      hydrated.value = myId;
+      scheduleMicrotask(() async {
+        final stored = await mirror.read(myId);
+        if (stored.isEmpty) return;
+        final next = Map<String, ConversationSummary>.from(slot.value);
+        for (final s in stored) {
+          final existing = next[s.peerId];
+          if (existing != null && existing.lastAt.isAfter(s.lastAt)) continue;
+          next[s.peerId] = ConversationSummary(
+            peerId: s.peerId,
+            peerDisplay: s.peerDisplay,
+            lastBody: s.lastBody,
+            lastAt: s.lastAt,
+            direction: s.directionOutgoing
+                ? ConversationDirection.outgoing
+                : ConversationDirection.incoming,
+          );
+        }
+        slot.value = next;
+      });
+    }
+
+    void persist(Map<String, ConversationSummary> map) {
+      final rows = map.values
+          .map(
+            (c) => StoredConversation(
+              peerId: c.peerId,
+              peerDisplay: c.peerDisplay,
+              lastBody: c.lastBody,
+              lastAt: c.lastAt,
+              directionOutgoing: c.direction == ConversationDirection.outgoing,
+            ),
+          )
+          .toList(growable: false);
+      unawaited(mirror.write(myId, rows));
     }
 
     void fold({
@@ -78,7 +121,7 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
           : ConversationDirection.incoming;
       final existing = slot.value[peerId];
       if (existing != null && existing.lastAt.isAfter(sentAt)) return;
-      slot.value = <String, ConversationSummary>{
+      final next = <String, ConversationSummary>{
         ...slot.value,
         peerId: ConversationSummary(
           peerId: peerId,
@@ -88,6 +131,8 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
           direction: direction,
         ),
       };
+      slot.value = next;
+      persist(next);
     }
 
     final subLive = events

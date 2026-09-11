@@ -7,6 +7,7 @@ import '../../rainbow/xmpp_client.dart';
 import '../models/auth_state.dart';
 import '../session_store.dart';
 import 'auth_state_capsule.dart';
+import 'conversations_mirror_capsule.dart';
 import 'messages_capsule.dart';
 import 'push_capsule.dart';
 import 'rest_capsule.dart';
@@ -56,6 +57,7 @@ AuthController authControllerCapsule(CapsuleHandle use) {
   final authSlot = use(authStateCapsule);
   final push = use(pushCapsule);
   final store = use(sessionStoreCapsule);
+  final conversationsMirror = use(conversationsMirrorCapsule);
   final booted = use.data<bool>(false);
 
   Future<void> restore() async {
@@ -198,9 +200,13 @@ AuthController authControllerCapsule(CapsuleHandle use) {
       // ditto — server may already have invalidated the session.
     }
     resetMessagesCapsuleCache();
+    final signedOutId = currentUserId;
     authSlot.value = const AuthState.signedOut();
     rest.setBearer(null);
     unawaited(store.clear());
+    if (signedOutId != null) {
+      unawaited(conversationsMirror.clear(signedOutId));
+    }
   }
 
   Future<RainbowUser?> refreshMe() async {
