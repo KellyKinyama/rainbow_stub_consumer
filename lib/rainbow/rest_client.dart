@@ -296,6 +296,39 @@ class RainbowRestClient {
     _check(r);
   }
 
+  /// Fetches the signed-in user's call history, most recent first.
+  Future<List<CallLogEntry>> listCallLogs({
+    required String userId,
+    int limit = 100,
+    int offset = 0,
+  }) async {
+    final r = await _http.get(
+      _u(
+        '/api/rainbow/enduser/v1.0/users/$userId/calllogs',
+        {'limit': '$limit', 'offset': '$offset'},
+      ),
+      headers: _authed(),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return (j['data'] as List)
+        .cast<Map<String, dynamic>>()
+        .map(CallLogEntry.fromJson)
+        .toList();
+  }
+
+  /// Deletes a single call-log entry by id.
+  Future<void> deleteCallLog({
+    required String userId,
+    required String id,
+  }) async {
+    final r = await _http.delete(
+      _u('/api/rainbow/enduser/v1.0/users/$userId/calllogs/$id'),
+      headers: _authed(),
+    );
+    _check(r);
+  }
+
   /// Two-step upload — creates a descriptor, then PUTs the bytes. Returns
   /// the descriptor with the `downloadUrl` filled in.
   Future<FileDescriptor> uploadFile({

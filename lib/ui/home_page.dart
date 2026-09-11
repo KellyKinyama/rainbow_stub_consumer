@@ -5,9 +5,12 @@ import 'package:rearch/rearch.dart';
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
 import 'bubbles_tab.dart';
+import 'call_log_page.dart';
 import 'contacts_tab.dart';
+import 'conversations_tab.dart';
 import 'profile_page.dart';
 
 class HomePage extends RearchConsumer {
@@ -21,13 +24,15 @@ class HomePage extends RearchConsumer {
     // Register a fake push token as a side-effect on login. Result
     // ignored — the capsule handles retries + logout deregister.
     use(pushCapsule);
+    final permissions = use(permissionsCapsule);
     final (tab, setTab) = use.state<int>(0);
 
-    const pages = [ContactsTab(), BubblesTab()];
+    const pages = [ConversationsTab(), ContactsTab(), BubblesTab()];
+    const titles = ['Recent', 'Contacts', 'Bubbles'];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(tab == 0 ? 'Contacts' : 'Bubbles'),
+        title: Text(titles[tab]),
         actions: [
           PopupMenuButton<String>(
             icon: CircleAvatar(
@@ -45,6 +50,12 @@ class HomePage extends RearchConsumer {
                       builder: (_) => const ProfilePage(),
                     ),
                   );
+                case 'calls':
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const CallLogPage(),
+                    ),
+                  );
                 case 'online':
                 case 'away':
                 case 'dnd':
@@ -55,6 +66,7 @@ class HomePage extends RearchConsumer {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'profile', child: Text('My profile')),
+              PopupMenuItem(value: 'calls', child: Text('Recent calls')),
               PopupMenuDivider(),
               PopupMenuItem(value: 'online', child: Text('Presence: online')),
               PopupMenuItem(value: 'away', child: Text('Presence: away')),
@@ -68,11 +80,23 @@ class HomePage extends RearchConsumer {
           ),
         ],
       ),
-      body: pages[tab],
+      body: permissions.anyDenied
+          ? Column(
+              children: [
+                _PermissionsBanner(state: permissions),
+                Expanded(child: pages[tab]),
+              ],
+            )
+          : pages[tab],
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: setTab,
         destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Recent',
+          ),
           NavigationDestination(
             icon: Icon(Icons.people_outline),
             selectedIcon: Icon(Icons.people),
@@ -84,6 +108,35 @@ class HomePage extends RearchConsumer {
             label: 'Bubbles',
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PermissionsBanner extends StatelessWidget {
+  const _PermissionsBanner({required this.state});
+  final PermissionsState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, color: scheme.onErrorContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Some permissions were denied. Calls and file attachments may not work.',
+                style: TextStyle(color: scheme.onErrorContainer),
+              ),
+            ),
+            TextButton(onPressed: state.ask, child: const Text('Retry')),
+          ],
+        ),
       ),
     );
   }

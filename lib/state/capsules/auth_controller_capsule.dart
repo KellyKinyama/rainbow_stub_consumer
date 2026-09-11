@@ -35,7 +35,8 @@ class AuthController {
     String? title,
     String? jobTitle,
     String? language,
-  }) updateMe;
+  })
+  updateMe;
 }
 
 /// Orchestrates REST login + XMPP connect, and flips [authStateCapsule].

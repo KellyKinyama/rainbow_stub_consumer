@@ -45,6 +45,7 @@ dependencies:
   meta: ^1.15.0
   flutter_webrtc: ^0.13.0
   flutter_ringtone_player: ^4.0.0+3
+  permission_handler: ^13.0.2
 
 dev_dependencies:
   flutter_test:

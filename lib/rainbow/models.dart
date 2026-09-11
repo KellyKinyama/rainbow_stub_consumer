@@ -103,6 +103,57 @@ class BubbleMember {
   );
 }
 
+/// One entry from `GET /users/:id/calllogs`.
+class CallLogEntry {
+  CallLogEntry({
+    required this.id,
+    required this.peerJid,
+    required this.peerDisplayName,
+    required this.direction,
+    required this.state,
+    required this.media,
+    required this.startedAt,
+    required this.durationMs,
+    required this.isRead,
+    this.readAt,
+  });
+
+  final String id;
+  final String peerJid;
+  final String? peerDisplayName;
+
+  /// `outgoing | incoming`.
+  final String direction;
+
+  /// `answered | missed | declined | failed`.
+  final String state;
+
+  /// `audio | video`.
+  final String media;
+  final DateTime startedAt;
+  final int durationMs;
+  final bool isRead;
+  final DateTime? readAt;
+
+  bool get isMissed => state == 'missed';
+  bool get isOutgoing => direction == 'outgoing';
+
+  factory CallLogEntry.fromJson(Map<String, dynamic> j) => CallLogEntry(
+    id: j['id'] as String,
+    peerJid: (j['peer'] ?? '') as String,
+    peerDisplayName: j['peerDisplayName'] as String?,
+    direction: (j['direction'] ?? 'outgoing') as String,
+    state: (j['state'] ?? 'answered') as String,
+    media: (j['media'] ?? 'audio') as String,
+    startedAt: DateTime.parse(j['startDate'] as String),
+    durationMs: (j['duration'] as num?)?.toInt() ?? 0,
+    isRead: (j['isRead'] as bool?) ?? false,
+    readAt: j['readDate'] == null
+        ? null
+        : DateTime.parse(j['readDate'] as String),
+  );
+}
+
 /// In-memory chat message — populated by REST (history) and by XMPP (live).
 class ChatMessage {
   ChatMessage({
