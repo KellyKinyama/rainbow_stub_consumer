@@ -26,14 +26,14 @@ class StoredThreadMessage {
   final String? replyToStanzaId;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'body': body,
-        'from': from,
-        'to': to,
-        'sentAt': sentAt.toIso8601String(),
-        'isMine': isMine,
-        if (replyToStanzaId != null) 'replyToStanzaId': replyToStanzaId,
-      };
+    'id': id,
+    'body': body,
+    'from': from,
+    'to': to,
+    'sentAt': sentAt.toIso8601String(),
+    'isMine': isMine,
+    if (replyToStanzaId != null) 'replyToStanzaId': replyToStanzaId,
+  };
 
   static StoredThreadMessage? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -140,8 +140,10 @@ class SharedPrefsMessagesMirror implements MessagesMirror {
 class NoOpMessagesMirror implements MessagesMirror {
   const NoOpMessagesMirror();
   @override
-  Future<List<StoredThreadMessage>> read(String userId, String threadKey) async =>
-      const [];
+  Future<List<StoredThreadMessage>> read(
+    String userId,
+    String threadKey,
+  ) async => const [];
   @override
   Future<void> saveThread(
     String userId,

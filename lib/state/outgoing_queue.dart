@@ -23,13 +23,13 @@ class QueuedSend {
   final String? replyToStanzaId;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'threadKey': threadKey,
-        'isGroupChat': isGroupChat,
-        'body': body,
-        'queuedAt': queuedAt.toIso8601String(),
-        if (replyToStanzaId != null) 'replyToStanzaId': replyToStanzaId,
-      };
+    'id': id,
+    'threadKey': threadKey,
+    'isGroupChat': isGroupChat,
+    'body': body,
+    'queuedAt': queuedAt.toIso8601String(),
+    if (replyToStanzaId != null) 'replyToStanzaId': replyToStanzaId,
+  };
 
   static QueuedSend? fromJson(Object? raw) {
     if (raw is! Map) return null;

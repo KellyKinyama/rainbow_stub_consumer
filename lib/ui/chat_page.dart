@@ -13,7 +13,9 @@ import '../state/capsules/call_manager_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
+import '../state/capsules/presence_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
+import '../state/models/presence.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'forward_picker.dart';
@@ -32,6 +34,7 @@ class ChatPage extends RearchConsumer {
     final threadKey = '${peer.id}@${config.xmppDomain}';
     final controller = use(chatControllerCapsule(threadKey));
     final peerIsTyping = use(typingCapsule(threadKey));
+    final presence = use(presenceCapsule);
     final unread = use(unreadCapsule);
     final input = use.textEditingController();
     final (replyingTo, setReplyingTo) = use.state<Message?>(null);
@@ -185,7 +188,11 @@ class ChatPage extends RearchConsumer {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(peer.display),
+        title: _PeerHeader(
+          peer: peer,
+          presence: _presenceFor(peer, presence),
+          isTyping: peerIsTyping,
+        ),
         actions: [
           IconButton(
             tooltip: 'Voice call',
@@ -338,3 +345,59 @@ Map<String, List<String>> _reactionsOf(Message m) => switch (m) {
   FileMessage m => Map.of(m.reactions ?? const {}),
   _ => <String, List<String>>{},
 };
+
+class _PeerHeader extends StatelessWidget {
+  const _PeerHeader({
+    required this.peer,
+    required this.presence,
+    required this.isTyping,
+  });
+
+  final RainbowUser peer;
+  final Presence? presence;
+  final bool isTyping;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = isTyping ? 'typing�' : _presenceLabel(presence, peer);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Text(peer.display, overflow: TextOverflow.ellipsis, maxLines: 1),
+        if (subtitle.isNotEmpty)
+          Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontStyle: isTyping ? FontStyle.italic : FontStyle.normal,
+            ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+      ],
+    );
+  }
+}
+
+Presence? _presenceFor(RainbowUser u, Map<String, Presence> map) {
+  for (final key in map.keys) {
+    final local = key.contains('@') ? key.substring(0, key.indexOf('@')) : key;
+    if (local == u.id) return map[key];
+  }
+  return null;
+}
+
+String _presenceLabel(Presence? p, RainbowUser u) {
+  final show = p?.show ?? u.presenceShow;
+  final status = p?.status ?? u.presenceStatus;
+  final label = switch (show) {
+    'chat' || 'online' => 'online',
+    'away' => 'away',
+    'dnd' => 'do not disturb',
+    'xa' => 'extended away',
+    _ => 'offline',
+  };
+  if (status != null && status.isNotEmpty) return '$label � $status';
+  return label;
+}

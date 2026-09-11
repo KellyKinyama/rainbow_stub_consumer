@@ -7,6 +7,7 @@ import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/connectivity_capsule.dart';
+import '../state/capsules/outbox_count_capsule.dart';
 import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
@@ -29,6 +30,7 @@ class HomePage extends RearchConsumer {
     use(pushCapsule);
     final permissions = use(permissionsCapsule);
     final online = use(connectivityCapsule);
+    final outboxCount = use(outboxCountCapsule);
     final unread = use(unreadCapsule);
     final bubblesAsync = use(bubblesCapsule);
     final bubbleIds = switch (bubblesAsync) {
@@ -103,6 +105,7 @@ class HomePage extends RearchConsumer {
           ? Column(
               children: [
                 if (!online) const _OfflineBanner(),
+                if (outboxCount > 0) _OutboxBanner(count: outboxCount),
                 _PermissionsBanner(state: permissions),
                 Expanded(child: pages[tab]),
               ],
@@ -110,6 +113,7 @@ class HomePage extends RearchConsumer {
           : Column(
               children: [
                 if (!online) const _OfflineBanner(),
+                if (outboxCount > 0) _OutboxBanner(count: outboxCount),
                 Expanded(child: pages[tab]),
               ],
             ),
@@ -211,6 +215,37 @@ class _OfflineBanner extends StatelessWidget {
               child: Text(
                 'You are offline. Messages will send when the connection returns.',
                 style: TextStyle(color: scheme.onSurfaceVariant),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+class _OutboxBanner extends StatelessWidget {
+  const _OutboxBanner({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.schedule_send, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                count == 1
+                    ? '1 message queued — will send when reconnected.'
+                    : '$count messages queued — will send when reconnected.',
+                style: TextStyle(color: scheme.onTertiaryContainer),
               ),
             ),
           ],

@@ -169,14 +169,16 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
         if (myUserId != null && myGeneration == _cacheGeneration) {
           // Hydrate from the on-disk mirror first so the chat shows
           // history immediately; MAM below fills any gaps.
-          unawaited(_hydrateFromMirror(
-            mirror: mirror,
-            userId: myUserId,
-            threadKey: threadKey,
-            controller: controller,
-            generation: myGeneration,
-            isMuc: isMuc,
-          ));
+          unawaited(
+            _hydrateFromMirror(
+              mirror: mirror,
+              userId: myUserId,
+              threadKey: threadKey,
+              controller: controller,
+              generation: myGeneration,
+              isMuc: isMuc,
+            ),
+          );
           Timer.run(() => xmpp.queryMamWith(threadKey, max: 50));
         }
         return null;
@@ -661,10 +663,7 @@ void _saveThreadDebounced({
 /// Registers a stanza in the per-thread buffer. Called from the
 /// live/MAM/local insert paths so the debounced flush can persist
 /// whatever the controller currently shows.
-void _bufferForMirror({
-  required String threadKey,
-  required ChatMessage cm,
-}) {
+void _bufferForMirror({required String threadKey, required ChatMessage cm}) {
   final buf = _mirrorBuffer.putIfAbsent(
     threadKey,
     () => <String, StoredThreadMessage>{},
@@ -698,9 +697,7 @@ Future<void> _hydrateFromMirror({
     ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
   for (final s in sorted) {
     if (controller.messages.any((existing) => existing.id == s.id)) continue;
-    final senderId = isMuc
-        ? _resourcePart(s.from)
-        : _localPart(s.from);
+    final senderId = isMuc ? _resourcePart(s.from) : _localPart(s.from);
     final authorId = s.isMine ? userId : senderId;
     final msg = _toChatUiMessage(
       ChatMessage(
