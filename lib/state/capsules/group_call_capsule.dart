@@ -28,6 +28,11 @@ class ActiveGroupCall {
   final String roomBareJid;
   final String sid;
   final SfuGroupCallSession session;
+
+  /// Local moderator-set flag. The stub has no real "lock" wire
+  /// concept, so this is a client-side UI toggle for parity with the
+  /// RN sample's `LockConfButton`.
+  bool locked = false;
 }
 
 /// Global coordinator for MUC group calls. Tracks which bubbles have
@@ -124,6 +129,16 @@ class GroupCallManager extends ChangeNotifier {
       );
     }
     await call.session.close();
+    notifyListeners();
+  }
+
+  /// Client-side moderator lock. RN parity only \u2014 no wire effect
+  /// against this stub; the flag drives UI on all participants that
+  /// share the manager instance (i.e. the local one only).
+  void setRoomLocked(String roomBareJid, bool locked) {
+    final call = _joined[roomBareJid];
+    if (call == null || call.locked == locked) return;
+    call.locked = locked;
     notifyListeners();
   }
 

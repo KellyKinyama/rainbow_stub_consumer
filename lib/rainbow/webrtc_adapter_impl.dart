@@ -234,6 +234,15 @@ class _FlutterWebRtcSession implements RtcSession {
   }
 
   @override
+  Future<void> setSpeakerphoneEnabled(bool enabled) async {
+    try {
+      await rtc.Helper.setSpeakerphoneOn(enabled);
+    } on Object {
+      // Desktop / web plugins don't implement this yet; ignore.
+    }
+  }
+
+  @override
   Future<void> close() async {
     if (_closed) return;
     _closed = true;

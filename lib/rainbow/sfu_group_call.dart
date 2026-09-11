@@ -120,6 +120,11 @@ class SfuGroupCallSession {
   /// Cycles between front and rear cameras.
   Future<void> switchCamera() => _session?.switchCamera() ?? Future.value();
 
+  /// Routes audio through the loudspeaker (true) or the earpiece
+  /// (false) on mobile. No-op on desktop / web.
+  Future<void> setSpeakerphoneEnabled(bool enabled) =>
+      _session?.setSpeakerphoneEnabled(enabled) ?? Future.value();
+
   Future<void> close() async {
     if (_closed) return;
     _closed = true;

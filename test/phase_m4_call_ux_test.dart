@@ -90,6 +90,9 @@ class _FakeSession implements RtcSession {
   Future<void> switchCamera() async {}
 
   @override
+  Future<void> setSpeakerphoneEnabled(bool enabled) async {}
+
+  @override
   MediaStream? get localMediaStream => null;
 
   @override

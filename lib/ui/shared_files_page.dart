@@ -30,13 +30,11 @@ class SharedFilesPage extends RearchConsumer {
 
     Option<List<FileDescriptor>> previousOf(
       AsyncValue<List<FileDescriptor>> v,
-    ) =>
-        switch (v) {
-          AsyncData<List<FileDescriptor>>(:final data) => Some(data),
-          AsyncLoading<List<FileDescriptor>>(:final previousData) =>
-            previousData,
-          AsyncError<List<FileDescriptor>>(:final previousData) => previousData,
-        };
+    ) => switch (v) {
+      AsyncData<List<FileDescriptor>>(:final data) => Some(data),
+      AsyncLoading<List<FileDescriptor>>(:final previousData) => previousData,
+      AsyncError<List<FileDescriptor>>(:final previousData) => previousData,
+    };
 
     Future<void> load() async {
       slot.value = AsyncLoading<List<FileDescriptor>>(previousOf(slot.value));
@@ -81,8 +79,9 @@ class SharedFilesPage extends RearchConsumer {
         await load();
       } on Object catch (e) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
       }
     }
 
@@ -90,11 +89,16 @@ class SharedFilesPage extends RearchConsumer {
       final copy = List<FileDescriptor>.of(src);
       switch (sortBy) {
         case _SortBy.date:
-          copy.sort((a, b) =>
-              (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+          copy.sort(
+            (a, b) => (b.createdAt ?? DateTime(0)).compareTo(
+              a.createdAt ?? DateTime(0),
+            ),
+          );
         case _SortBy.name:
           copy.sort(
-              (a, b) => a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()));
+            (a, b) =>
+                a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()),
+          );
         case _SortBy.size:
           copy.sort((a, b) => b.size.compareTo(a.size));
       }
@@ -124,10 +128,12 @@ class SharedFilesPage extends RearchConsumer {
         ],
       ),
       body: switch (slot.value) {
-        AsyncLoading<List<FileDescriptor>>() =>
-          const Center(child: CircularProgressIndicator()),
-        AsyncError<List<FileDescriptor>>(:final error) =>
-          Center(child: Text('Could not load files: $error')),
+        AsyncLoading<List<FileDescriptor>>() => const Center(
+          child: CircularProgressIndicator(),
+        ),
+        AsyncError<List<FileDescriptor>>(:final error) => Center(
+          child: Text('Could not load files: $error'),
+        ),
         AsyncData<List<FileDescriptor>>(:final data) when data.isEmpty =>
           const Center(child: Text('No shared files yet')),
         AsyncData<List<FileDescriptor>>(:final data) => ListView.builder(
@@ -155,7 +161,11 @@ class SharedFilesPage extends RearchConsumer {
               },
               child: ListTile(
                 leading: CircleAvatar(child: Icon(_iconFor(f))),
-                title: Text(f.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                title: Text(
+                  f.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 subtitle: Text(_subtitle(f)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(

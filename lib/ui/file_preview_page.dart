@@ -46,7 +46,11 @@ class FilePreviewPage extends RearchConsumer {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(file.fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          file.fileName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
             tooltip: 'Copy link',
@@ -116,12 +120,12 @@ class _MetaCard extends StatelessWidget {
   }
 
   Widget _row(IconData icon, String text) => Row(
-        children: [
-          Icon(icon, size: 18),
-          const SizedBox(width: 12),
-          Expanded(child: Text(text)),
-        ],
-      );
+    children: [
+      Icon(icon, size: 18),
+      const SizedBox(width: 12),
+      Expanded(child: Text(text)),
+    ],
+  );
 }
 
 class _ImagePreview extends StatelessWidget {

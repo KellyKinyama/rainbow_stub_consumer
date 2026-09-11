@@ -174,10 +174,8 @@ class BubbleChatPage extends RearchConsumer {
             icon: const Icon(Icons.folder_open),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => SharedFilesPage(
-                  peerJid: threadKey,
-                  title: bubble.name,
-                ),
+                builder: (_) =>
+                    SharedFilesPage(peerJid: threadKey, title: bubble.name),
               ),
             ),
           ),

@@ -7,6 +7,7 @@ import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
+import 'bubble_invite_sheet.dart';
 
 /// Member list + edit + invite + leave / delete for a single bubble.
 /// Pushed from the info button in [BubbleChatPage].
@@ -121,10 +122,10 @@ class BubbleDetailsPage extends RearchConsumer {
                   icon: const Icon(Icons.person_add),
                   label: const Text('Invite from contacts'),
                   onPressed: () async {
-                    final target = await _pickContact(
+                    final target = await showBubbleContactPicker(
                       context,
-                      roster,
-                      accepted,
+                      roster: roster,
+                      alreadyMembers: accepted,
                     );
                     if (target == null) return;
                     try {
@@ -247,45 +248,6 @@ class BubbleDetailsPage extends RearchConsumer {
       nameCtl.dispose();
       topicCtl.dispose();
     }
-  }
-
-  Future<RainbowUser?> _pickContact(
-    BuildContext context,
-    List<RosterEntry> roster,
-    List<BubbleMember> already,
-  ) async {
-    final existing = already.map((m) => m.userId).toSet();
-    final options = roster
-        .where((r) => !existing.contains(r.peer.id))
-        .toList(growable: false);
-    if (options.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Everyone in your roster is already here'),
-        ),
-      );
-      return null;
-    }
-    return showModalBottomSheet<RainbowUser>(
-      context: context,
-      showDragHandle: true,
-      builder: (bc) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final r in options)
-              ListTile(
-                leading: CircleAvatar(
-                  child: Text(r.peer.display.characters.first.toUpperCase()),
-                ),
-                title: Text(r.peer.display),
-                subtitle: Text(r.peer.loginEmail),
-                onTap: () => Navigator.of(bc).pop(r.peer),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

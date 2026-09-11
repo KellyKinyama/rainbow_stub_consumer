@@ -46,6 +46,7 @@ class _FakeSession implements RtcSession {
   final micMutedCalls = <bool>[];
   final cameraEnabledCalls = <bool>[];
   int switchCameraCalls = 0;
+  final speakerphoneCalls = <bool>[];
   bool closed = false;
 
   void push(RtcSessionEvent e) {
@@ -105,6 +106,11 @@ class _FakeSession implements RtcSession {
   @override
   Future<void> switchCamera() async {
     switchCameraCalls++;
+  }
+
+  @override
+  Future<void> setSpeakerphoneEnabled(bool enabled) async {
+    speakerphoneCalls.add(enabled);
   }
 
   @override

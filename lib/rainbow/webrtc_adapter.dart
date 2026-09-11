@@ -119,6 +119,11 @@ abstract class RtcSession {
   /// No-op on desktop or when no local video track exists.
   Future<void> switchCamera();
 
+  /// Routes audio through the loudspeaker (true) or the earpiece
+  /// (false) on mobile. No-op on desktop / web where the OS mixer
+  /// owns audio routing.
+  Future<void> setSpeakerphoneEnabled(bool enabled);
+
   /// Closes the peer connection and releases native resources. Idempotent.
   Future<void> close();
 }

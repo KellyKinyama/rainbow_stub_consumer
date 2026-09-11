@@ -27,7 +27,7 @@ class GroupCallBanner extends RearchConsumer {
             if (!_screenOpen(context, roomJid)) {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => GroupCallScreen(roomBareJid: roomJid),
+                  builder: (_) => GroupCallScreen(bubble: bubble),
                   settings: RouteSettings(name: 'gcall:$roomJid'),
                 ),
               );
@@ -38,7 +38,7 @@ class GroupCallBanner extends RearchConsumer {
               if (!_screenOpen(context, roomJid)) {
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => GroupCallScreen(roomBareJid: roomJid),
+                    builder: (_) => GroupCallScreen(bubble: bubble),
                     settings: RouteSettings(name: 'gcall:$roomJid'),
                   ),
                 );

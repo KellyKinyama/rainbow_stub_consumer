@@ -3,10 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_rearch/flutter_rearch.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:rearch/rearch.dart';
 
+import '../rainbow/models.dart';
 import '../rainbow/sfu_group_call.dart';
 import '../rainbow/webrtc_adapter.dart';
+import '../state/capsules/auth_state_capsule.dart';
+import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/config_capsule.dart';
 import '../state/capsules/group_call_capsule.dart';
+import '../state/capsules/roster_capsule.dart';
+import 'bubble_invite_sheet.dart';
 
 /// Full-screen surface for an active group call.
 ///
@@ -14,17 +21,35 @@ import '../state/capsules/group_call_capsule.dart';
 ///   - background: adaptive grid of [RTCVideoView] tiles, one per
 ///     remote stream from [SfuGroupCallSession.remoteStreams];
 ///   - small mirrored local preview docked top-right;
-///   - bottom control row: mic, camera, camera-flip, leave.
+///   - bottom control row: mic, camera, speaker, camera-flip,
+///     add-participant, lock (moderator), hide-view, leave.
 ///
 /// Auto-pops when the manager no longer tracks a joined call for
-/// [roomBareJid] (e.g. peer terminates the room, or leave completes).
+/// the bubble's MUC JID (e.g. peer terminates the room, or leave
+/// completes).
 class GroupCallScreen extends RearchConsumer {
-  const GroupCallScreen({super.key, required this.roomBareJid});
-  final String roomBareJid;
+  const GroupCallScreen({super.key, required this.bubble});
+  final RainbowBubble bubble;
 
   @override
   Widget build(BuildContext context, WidgetHandle use) {
     final manager = use(groupCallManagerCapsule);
+    final config = use(configCapsule);
+    final actions = use(chatActionsCapsule);
+    final me = use(authCapsule).me;
+    final rosterAsync = use(rosterCapsule);
+    final roomBareJid = '${bubble.id}@muc.${config.xmppDomain}';
+    final roster = switch (rosterAsync) {
+      AsyncData<List<RosterEntry>>(:final data) => data,
+      _ => const <RosterEntry>[],
+    };
+    final iAmModerator = me != null &&
+        bubble.members.any(
+          (m) =>
+              m.userId == me.id &&
+              (m.role == 'owner' || m.role == 'moderator'),
+        );
+
     return ListenableBuilder(
       listenable: manager,
       builder: (ctx, _) {
@@ -48,12 +73,55 @@ class GroupCallScreen extends RearchConsumer {
                   height: 160,
                   child: _LocalPreview(session: call.session),
                 ),
+                if (call.locked)
+                  Positioned(
+                    left: 12,
+                    top: 12,
+                    child: Chip(
+                      avatar: const Icon(Icons.lock, size: 16),
+                      label: const Text('Locked'),
+                      backgroundColor: Colors.black45,
+                      labelStyle: const TextStyle(color: Colors.white),
+                    ),
+                  ),
                 Align(
                   alignment: Alignment.bottomCenter,
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 32),
                     child: _CallControls(
                       session: call.session,
+                      locked: call.locked,
+                      canModerate: iAmModerator,
+                      onToggleLock: () => manager.setRoomLocked(
+                        roomBareJid,
+                        !call.locked,
+                      ),
+                      onAddParticipant: () async {
+                        final target = await showBubbleContactPicker(
+                          context,
+                          roster: roster,
+                          alreadyMembers: bubble.members,
+                        );
+                        if (target == null) return;
+                        try {
+                          await actions.inviteToBubble(
+                            bubble,
+                            userId: target.id,
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Invited ${target.display}'),
+                            ),
+                          );
+                        } on Object catch (e) {
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Invite failed: $e')),
+                          );
+                        }
+                      },
+                      onHideView: () => Navigator.of(context).maybePop(),
                       onLeave: () => manager.leaveGroupCall(
                         roomBareJid,
                         announceEnd: false,
@@ -256,8 +324,21 @@ class _LocalPreviewState extends State<_LocalPreview> {
 }
 
 class _CallControls extends StatefulWidget {
-  const _CallControls({required this.session, required this.onLeave});
+  const _CallControls({
+    required this.session,
+    required this.locked,
+    required this.canModerate,
+    required this.onToggleLock,
+    required this.onAddParticipant,
+    required this.onHideView,
+    required this.onLeave,
+  });
   final SfuGroupCallSession session;
+  final bool locked;
+  final bool canModerate;
+  final VoidCallback onToggleLock;
+  final VoidCallback onAddParticipant;
+  final VoidCallback onHideView;
   final VoidCallback onLeave;
 
   @override
@@ -267,11 +348,14 @@ class _CallControls extends StatefulWidget {
 class _CallControlsState extends State<_CallControls> {
   bool _muted = false;
   bool _cameraOn = true;
+  bool _speakerOn = false;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 12,
+      runSpacing: 12,
       children: [
         _CircleButton(
           icon: _muted ? Icons.mic_off : Icons.mic,
@@ -281,7 +365,6 @@ class _CallControlsState extends State<_CallControls> {
             await widget.session.setMicrophoneMuted(_muted);
           },
         ),
-        const SizedBox(width: 12),
         _CircleButton(
           icon: _cameraOn ? Icons.videocam : Icons.videocam_off,
           color: Colors.white24,
@@ -290,13 +373,37 @@ class _CallControlsState extends State<_CallControls> {
             await widget.session.setCameraEnabled(_cameraOn);
           },
         ),
-        const SizedBox(width: 12),
+        _CircleButton(
+          icon: _speakerOn ? Icons.volume_up : Icons.volume_down,
+          color: Colors.white24,
+          onTap: () async {
+            setState(() => _speakerOn = !_speakerOn);
+            await widget.session.setSpeakerphoneEnabled(_speakerOn);
+          },
+        ),
         _CircleButton(
           icon: Icons.cameraswitch,
           color: Colors.white24,
           onTap: () => widget.session.switchCamera(),
         ),
-        const SizedBox(width: 12),
+        _CircleButton(
+          icon: Icons.person_add,
+          color: Colors.white24,
+          onTap: widget.onAddParticipant,
+        ),
+        if (widget.canModerate)
+          _CircleButton(
+            icon: widget.locked ? Icons.lock : Icons.lock_open,
+            color: widget.locked
+                ? Theme.of(context).colorScheme.primaryContainer
+                : Colors.white24,
+            onTap: widget.onToggleLock,
+          ),
+        _CircleButton(
+          icon: Icons.close_fullscreen,
+          color: Colors.white24,
+          onTap: widget.onHideView,
+        ),
         _CircleButton(
           icon: Icons.call_end,
           color: Theme.of(context).colorScheme.error,

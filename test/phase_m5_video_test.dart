@@ -107,6 +107,9 @@ class _FakeSession implements RtcSession {
   }
 
   @override
+  Future<void> setSpeakerphoneEnabled(bool enabled) async {}
+
+  @override
   Future<void> close() async {
     if (!_events.isClosed) await _events.close();
   }
