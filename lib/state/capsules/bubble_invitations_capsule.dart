@@ -42,8 +42,11 @@ BubbleInvitationsController bubbleInvitationsCapsule(CapsuleHandle use) {
       final list = await rest.roomInvitations();
       slot.value = AsyncData<List<RainbowBubble>>(list);
     } on Object catch (e, s) {
-      slot.value =
-          AsyncError<List<RainbowBubble>>(e, s, previousOf(slot.value));
+      slot.value = AsyncError<List<RainbowBubble>>(
+        e,
+        s,
+        previousOf(slot.value),
+      );
     }
   }
 

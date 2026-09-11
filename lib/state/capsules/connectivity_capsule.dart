@@ -19,8 +19,9 @@ bool connectivityCapsule(CapsuleHandle use) {
     // Seed with the current status so the banner isn't stale on mount.
     unawaited(connectivity.checkConnectivity().then(apply));
 
-    final StreamSubscription<List<ConnectivityResult>> sub =
-        connectivity.onConnectivityChanged.listen(apply);
+    final StreamSubscription<List<ConnectivityResult>> sub = connectivity
+        .onConnectivityChanged
+        .listen(apply);
     return sub.cancel;
   }, const []);
   return slot.value;

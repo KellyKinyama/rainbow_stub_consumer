@@ -176,5 +176,3 @@ class _OfflineBanner extends StatelessWidget {
     );
   }
 }
-
-

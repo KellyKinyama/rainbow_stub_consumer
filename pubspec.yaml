@@ -47,6 +47,7 @@ dependencies:
   flutter_ringtone_player: ^4.0.0+3
   permission_handler: ^13.0.2
   connectivity_plus: ^7.3.1
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

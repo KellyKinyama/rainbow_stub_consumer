@@ -445,6 +445,27 @@ class RainbowRestClient {
     );
   }
 
+  Future<List<FileDescriptor>> listSharedFiles(String peerJid) async {
+    final r = await _http.get(
+      _u('/api/rainbow/fileServer/v1.0/files', {'peer': peerJid}),
+      headers: _authed(),
+    );
+    _check(r);
+    final body = jsonDecode(r.body) as Map<String, dynamic>;
+    final data = (body['data'] as List).cast<Map>();
+    return data
+        .map((m) => FileDescriptor.fromJson(m.cast<String, dynamic>()))
+        .toList(growable: false);
+  }
+
+  Future<void> deleteFile(String id) async {
+    final r = await _http.delete(
+      _u('/api/rainbow/fileServer/v1.0/files/$id'),
+      headers: _authed(),
+    );
+    _check(r);
+  }
+
   /// Fetches a file's bytes with the current bearer.
   Future<List<int>> downloadFileBytes(String downloadUrl) async {
     final r = await _http.get(Uri.parse(downloadUrl), headers: _authed());

@@ -195,6 +195,9 @@ class FileDescriptor {
     required this.mimeType,
     required this.size,
     required this.downloadUrl,
+    this.ownerId,
+    this.peer,
+    this.createdAt,
   });
 
   final String id;
@@ -202,6 +205,9 @@ class FileDescriptor {
   final String mimeType;
   final int size;
   final String downloadUrl;
+  final String? ownerId;
+  final String? peer;
+  final DateTime? createdAt;
 
   bool get isImage => mimeType.startsWith('image/');
 
@@ -211,5 +217,11 @@ class FileDescriptor {
     mimeType: (j['mime'] ?? 'application/octet-stream') as String,
     size: (j['size'] as int?) ?? 0,
     downloadUrl: (j['downloadUrl'] ?? '') as String,
+    ownerId: j['ownerId'] as String?,
+    peer: j['peer'] as String?,
+    createdAt: switch (j['creationDate']) {
+      final String s => DateTime.tryParse(s),
+      _ => null,
+    },
   );
 }

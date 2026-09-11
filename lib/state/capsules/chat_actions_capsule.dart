@@ -188,18 +188,15 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     RainbowBubble bubble, {
     String? name,
     String? topic,
-  }) =>
-      rest.updateRoom(bubble.id, name: name, topic: topic);
+  }) => rest.updateRoom(bubble.id, name: name, topic: topic);
 
-  Future<void> deleteBubble(RainbowBubble bubble) =>
-      rest.deleteRoom(bubble.id);
+  Future<void> deleteBubble(RainbowBubble bubble) => rest.deleteRoom(bubble.id);
 
   Future<RainbowBubble> inviteToBubble(
     RainbowBubble bubble, {
     String? userId,
     String? loginEmail,
-  }) =>
-      rest.inviteToRoom(bubble.id, userId: userId, loginEmail: loginEmail);
+  }) => rest.inviteToRoom(bubble.id, userId: userId, loginEmail: loginEmail);
 
   Future<RainbowBubble> _setMyStatus(RainbowBubble bubble, String status) {
     final myId = auth.me?.id;

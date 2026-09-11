@@ -22,9 +22,9 @@ class BubbleDetailsPage extends RearchConsumer {
     final bubblesAsync = use(bubblesCapsule);
     final live = switch (bubblesAsync) {
       AsyncData<List<RainbowBubble>>(:final data) => data.firstWhere(
-          (b) => b.id == bubble.id,
-          orElse: () => bubble,
-        ),
+        (b) => b.id == bubble.id,
+        orElse: () => bubble,
+      ),
       _ => bubble,
     };
     final actions = use(chatActionsCapsule);
@@ -45,10 +45,8 @@ class BubbleDetailsPage extends RearchConsumer {
         .where((m) => m.userId == (me?.id ?? ''))
         .fold<BubbleMember?>(null, (_, m) => m);
     final isOwner = myMember?.role == 'owner';
-    final accepted =
-        live.members.where((m) => m.status == 'accepted').toList();
-    final invited =
-        live.members.where((m) => m.status == 'invited').toList();
+    final accepted = live.members.where((m) => m.status == 'accepted').toList();
+    final invited = live.members.where((m) => m.status == 'invited').toList();
 
     Future<void> confirm({
       required String title,
@@ -97,7 +95,9 @@ class BubbleDetailsPage extends RearchConsumer {
           for (final m in accepted)
             ListTile(
               leading: CircleAvatar(
-                child: Text(peerDisplay(m.userId).characters.first.toUpperCase()),
+                child: Text(
+                  peerDisplay(m.userId).characters.first.toUpperCase(),
+                ),
               ),
               title: Text(peerDisplay(m.userId)),
               subtitle: Text(m.role),
@@ -121,16 +121,17 @@ class BubbleDetailsPage extends RearchConsumer {
                   icon: const Icon(Icons.person_add),
                   label: const Text('Invite from contacts'),
                   onPressed: () async {
-                    final target =
-                        await _pickContact(context, roster, accepted);
+                    final target = await _pickContact(
+                      context,
+                      roster,
+                      accepted,
+                    );
                     if (target == null) return;
                     try {
                       await actions.inviteToBubble(live, userId: target.id);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('Invited ${target.display}'),
-                          ),
+                          SnackBar(content: Text('Invited ${target.display}')),
                         );
                       }
                     } on Object catch (e) {
@@ -148,7 +149,8 @@ class BubbleDetailsPage extends RearchConsumer {
                   label: const Text('Leave bubble'),
                   onPressed: () => confirm(
                     title: 'Leave bubble?',
-                    message: 'You will stop receiving messages in ${live.name}.',
+                    message:
+                        'You will stop receiving messages in ${live.name}.',
                     action: () => actions.leaveBubble(live),
                   ),
                 ),
@@ -182,14 +184,14 @@ class BubbleDetailsPage extends RearchConsumer {
   }
 
   Widget _sectionTitle(BuildContext context, String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(
-          text,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(
+      text,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
 
   Future<void> _editSheet(
     BuildContext context,
@@ -258,7 +260,9 @@ class BubbleDetailsPage extends RearchConsumer {
         .toList(growable: false);
     if (options.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Everyone in your roster is already here')),
+        const SnackBar(
+          content: Text('Everyone in your roster is already here'),
+        ),
       );
       return null;
     }

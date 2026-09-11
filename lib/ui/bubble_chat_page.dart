@@ -16,6 +16,7 @@ import 'chat_widgets.dart';
 import 'bubble_details_page.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
+import 'shared_files_page.dart';
 
 class BubbleChatPage extends RearchConsumer {
   const BubbleChatPage({super.key, required this.bubble});
@@ -168,6 +169,18 @@ class BubbleChatPage extends RearchConsumer {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Shared files',
+            icon: const Icon(Icons.folder_open),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SharedFilesPage(
+                  peerJid: threadKey,
+                  title: bubble.name,
+                ),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Bubble details',
             icon: const Icon(Icons.info_outline),

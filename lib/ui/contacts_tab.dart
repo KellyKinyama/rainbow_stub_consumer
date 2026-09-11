@@ -44,8 +44,9 @@ class ContactsTab extends RearchConsumer {
       case AsyncError<List<RosterEntry>>(:final error):
         list = Center(child: Text('Roster failed: $error'));
       case AsyncData<List<RosterEntry>>(:final data):
-        final filtered =
-            data.where((e) => matches(e.peer)).toList(growable: false);
+        final filtered = data
+            .where((e) => matches(e.peer))
+            .toList(growable: false);
         if (data.isEmpty) {
           list = const Center(child: Text('No contacts yet'));
         } else if (filtered.isEmpty) {
@@ -124,7 +125,6 @@ class ContactsTab extends RearchConsumer {
     return null;
   }
 }
-
 
 class _SearchField extends StatelessWidget {
   const _SearchField({required this.hint, required this.onChanged});

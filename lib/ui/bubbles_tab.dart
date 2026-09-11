@@ -91,14 +91,14 @@ class BubblesTab extends RearchConsumer {
   }
 
   static Widget _sectionTitle(BuildContext context, String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(
-          text,
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-              ),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(
+      text,
+      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
 }
 
 class _BubblesBody extends StatelessWidget {
@@ -144,7 +144,9 @@ class _BubblesBody extends StatelessWidget {
             children: [
               if (pendingInvites.isNotEmpty) ...[
                 BubblesTab._sectionTitle(
-                    context, 'Invitations (${pendingInvites.length})'),
+                  context,
+                  'Invitations (${pendingInvites.length})',
+                ),
                 for (final b in pendingInvites)
                   _InvitationTile(
                     bubble: b,

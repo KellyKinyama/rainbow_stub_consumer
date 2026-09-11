@@ -16,6 +16,7 @@ import '../state/capsules/messages_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'forward_picker.dart';
+import 'shared_files_page.dart';
 
 class ChatPage extends RearchConsumer {
   const ChatPage({super.key, required this.peer});
@@ -196,6 +197,18 @@ class ChatPage extends RearchConsumer {
               peer: peer,
               peerFullJid: threadKey,
               video: true,
+            ),
+          ),
+          IconButton(
+            tooltip: 'Shared files',
+            icon: const Icon(Icons.folder_open),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SharedFilesPage(
+                  peerJid: threadKey,
+                  title: peer.display,
+                ),
+              ),
             ),
           ),
         ],
