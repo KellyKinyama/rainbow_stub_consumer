@@ -26,6 +26,10 @@ class CopyChoice extends MessageActionChoice {
   const CopyChoice();
 }
 
+class ForwardChoice extends MessageActionChoice {
+  const ForwardChoice();
+}
+
 class DeleteChoice extends MessageActionChoice {
   const DeleteChoice();
 }
@@ -81,6 +85,12 @@ Future<MessageActionChoice?> showMessageActions(
               title: const Text('Copy'),
               onTap: () => Navigator.of(bs).pop('copy'),
             ),
+          if (target is TextMessage)
+            ListTile(
+              leading: const Icon(Icons.forward_outlined),
+              title: const Text('Forward'),
+              onTap: () => Navigator.of(bs).pop('forward'),
+            ),
           if (allowDelete)
             ListTile(
               leading: Icon(
@@ -105,6 +115,7 @@ Future<MessageActionChoice?> showMessageActions(
     'reply' => const ReplyChoice(),
     'edit' => const EditChoice(),
     'copy' => const CopyChoice(),
+    'forward' => const ForwardChoice(),
     'delete' => const DeleteChoice(),
     _ => null,
   };

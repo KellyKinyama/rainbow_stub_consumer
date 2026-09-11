@@ -8,6 +8,7 @@ import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
 import 'bubbles_tab.dart';
 import 'contacts_tab.dart';
+import 'profile_page.dart';
 
 class HomePage extends RearchConsumer {
   const HomePage({super.key});
@@ -38,6 +39,12 @@ class HomePage extends RearchConsumer {
             ),
             onSelected: (v) async {
               switch (v) {
+                case 'profile':
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProfilePage(),
+                    ),
+                  );
                 case 'online':
                 case 'away':
                 case 'dnd':
@@ -47,6 +54,8 @@ class HomePage extends RearchConsumer {
               }
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'profile', child: Text('My profile')),
+              PopupMenuDivider(),
               PopupMenuItem(value: 'online', child: Text('Presence: online')),
               PopupMenuItem(value: 'away', child: Text('Presence: away')),
               PopupMenuItem(

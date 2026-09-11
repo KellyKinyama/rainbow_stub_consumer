@@ -5,7 +5,10 @@ class RainbowUser {
     this.firstName,
     this.lastName,
     this.displayName,
+    this.nickName,
+    this.title,
     this.jobTitle,
+    this.language,
     this.presenceShow,
     this.presenceStatus,
     this.hasAvatar = false,
@@ -16,7 +19,10 @@ class RainbowUser {
   final String? firstName;
   final String? lastName;
   final String? displayName;
+  final String? nickName;
+  final String? title;
   final String? jobTitle;
+  final String? language;
   final String? presenceShow;
   final String? presenceStatus;
   final bool hasAvatar;
@@ -33,7 +39,10 @@ class RainbowUser {
     firstName: j['firstName'] as String?,
     lastName: j['lastName'] as String?,
     displayName: j['displayName'] as String?,
+    nickName: j['nickName'] as String?,
+    title: j['title'] as String?,
     jobTitle: j['jobTitle'] as String?,
+    language: j['language'] as String?,
     presenceShow: (j['presence'] as Map?)?['show'] as String?,
     presenceStatus: (j['presence'] as Map?)?['status'] as String?,
     hasAvatar: j['lastAvatarUpdateDate'] != null,

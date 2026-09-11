@@ -92,6 +92,97 @@ class RainbowRestClient {
     _bearer = null;
   }
 
+  /// Self-register step 1: ask the server to email a confirmation
+  /// token. The stub returns the token in the response body under
+  /// `data.devToken` so demos can skip a real mailbox.
+  Future<String> selfRegisterSendEmail(String email) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/self-register/send-email'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({'email': email}),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return ((j['data'] as Map<String, dynamic>)['devToken'] as String);
+  }
+
+  /// Self-register step 2: complete registration with the confirmation
+  /// token from [selfRegisterSendEmail] plus the new password.
+  Future<RainbowUser> selfRegister({
+    required String token,
+    required String password,
+    String? firstName,
+    String? lastName,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/self-register'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({
+        'token': token,
+        'password': password,
+        if (firstName != null && firstName.isNotEmpty) 'firstName': firstName,
+        if (lastName != null && lastName.isNotEmpty) 'lastName': lastName,
+      }),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RainbowUser.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
+  /// Reset-password step 1: request an email with a reset token.
+  /// Same devToken-in-response trick as [selfRegisterSendEmail].
+  Future<String> resetPasswordSendEmail(String email) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/reset-password/send-email'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({'email': email}),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return ((j['data'] as Map<String, dynamic>)['devToken'] as String);
+  }
+
+  /// Reset-password step 2: apply the new password given the token.
+  Future<void> resetPassword({
+    required String token,
+    required String password,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/reset-password'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({'token': token, 'password': password}),
+    );
+    _check(r);
+  }
+
+  /// Updates mutable profile fields on the signed-in user. Any null
+  /// field is left unchanged server-side (COALESCE semantics).
+  Future<RainbowUser> updateMe({
+    required String userId,
+    String? firstName,
+    String? lastName,
+    String? nickName,
+    String? title,
+    String? jobTitle,
+    String? language,
+  }) async {
+    final r = await _http.put(
+      _u('/api/rainbow/enduser/v1.0/users/$userId'),
+      headers: _authed(contentType: 'application/json'),
+      body: jsonEncode({
+        if (firstName != null) 'firstName': firstName,
+        if (lastName != null) 'lastName': lastName,
+        if (nickName != null) 'nickName': nickName,
+        if (title != null) 'title': title,
+        if (jobTitle != null) 'jobTitle': jobTitle,
+        if (language != null) 'language': language,
+      }),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RainbowUser.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
   Future<List<RosterEntry>> networks() async {
     final r = await _http.get(
       _u('/api/rainbow/enduser/v1.0/users/networks'),

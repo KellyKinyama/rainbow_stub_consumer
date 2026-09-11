@@ -13,6 +13,7 @@ import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
+import 'forward_picker.dart';
 import 'group_call_banner.dart';
 
 class BubbleChatPage extends RearchConsumer {
@@ -125,6 +126,15 @@ class BubbleChatPage extends RearchConsumer {
           beginEdit(m);
         case CopyChoice() when m is TextMessage:
           await Clipboard.setData(ClipboardData(text: m.text));
+        case ForwardChoice() when m is TextMessage:
+          final target = await pickForwardTarget(ctx);
+          if (target == null) return;
+          switch (target) {
+            case ForwardPeerTarget(:final peer):
+              actions.sendPeer(peer, m.text);
+            case ForwardBubbleTarget(:final bubble):
+              actions.sendGroup(bubble, m.text);
+          }
         case DeleteChoice():
           actions.retractGroup(bubble, targetStanzaId: m.id);
         default:

@@ -4,6 +4,8 @@ import 'package:rearch/rearch.dart';
 
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/config_capsule.dart';
+import 'forgot_password_page.dart';
+import 'register_page.dart';
 
 class LoginPage extends RearchConsumer {
   const LoginPage({super.key});
@@ -82,6 +84,29 @@ class LoginPage extends RearchConsumer {
                           )
                         : const Text('Sign in'),
                   ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  alignment: WrapAlignment.spaceBetween,
+                  spacing: 4,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const RegisterPage(),
+                        ),
+                      ),
+                      child: const Text('Create account'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const ForgotPasswordPage(),
+                        ),
+                      ),
+                      child: const Text('Forgot password?'),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
