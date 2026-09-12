@@ -43,6 +43,8 @@ class ChatPage extends RearchConsumer {
     final activeThread = use(activeThreadCapsule);
     final unread = use(unreadCapsule);
     final input = use.textEditingController();
+    final scrollCtrl = use.memo(() => ScrollController(), const []);
+    use.effect(() => scrollCtrl.dispose, const []);
     final (replyingTo, setReplyingTo) = use.state<Message?>(null);
     final (editing, setEditing) = use.state<TextMessage?>(null);
 
@@ -81,6 +83,32 @@ class ChatPage extends RearchConsumer {
       }
       return null;
     }, [threadKey, peerOnline]);
+
+    // Follow new messages: scroll to the bottom when a message is
+    // appended — always for our own send, and for an incoming message
+    // when already near the bottom (so reading history isn't yanked).
+    use.effect(() {
+      final sub = controller.operationsStream.listen((op) {
+        if (op.type != ChatOperationType.insert) return;
+        final idx = op.index;
+        if (idx == null || idx < controller.messages.length - 1) return;
+        final mine = op.message?.authorId == currentUserId;
+        // Delay past the insert animation so maxScrollExtent is final.
+        Future<void>.delayed(const Duration(milliseconds: 300), () {
+          if (!scrollCtrl.hasClients) return;
+          final pos = scrollCtrl.position;
+          final nearBottom = pos.maxScrollExtent - pos.pixels < 600;
+          if (mine || nearBottom) {
+            scrollCtrl.animateTo(
+              pos.maxScrollExtent,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      });
+      return sub.cancel;
+    }, [controller]);
 
     use.effect(() {
       Timer? pauseTimer;
@@ -300,6 +328,11 @@ class ChatPage extends RearchConsumer {
                 resolveUser: resolveUser,
                 chatController: controller,
                 builders: Builders(
+                  chatAnimatedListBuilder: (context, itemBuilder) =>
+                      ChatAnimatedList(
+                        itemBuilder: itemBuilder,
+                        scrollController: scrollCtrl,
+                      ),
                   composerBuilder: (ctx) =>
                       Composer(textEditingController: input),
                   textMessageBuilder:
