@@ -77,14 +77,13 @@ class CallManager extends ChangeNotifier {
     required WebRtcAdapter adapter,
     required RainbowXmppClient xmpp,
     required String Function() sidGen,
-    PeerNameResolver? resolvePeerName,
+    this.resolvePeerName,
     Ringer? ringer,
     Future<void> Function(CallLogPayload)? writeCallLog,
     Duration disconnectedGrace = const Duration(seconds: 20),
   }) : _adapter = adapter,
        _xmpp = xmpp,
        _sidGen = sidGen,
-       _resolvePeerName = resolvePeerName,
        _ringer = ringer ?? HapticRinger(),
        _writeCallLog = writeCallLog,
        _disconnectedGrace = disconnectedGrace {
@@ -95,7 +94,11 @@ class CallManager extends ChangeNotifier {
   }
 
   final WebRtcAdapter _adapter;
-  final PeerNameResolver? _resolvePeerName;
+
+  /// Live peer-name resolver. Reassigned by the capsule on every
+  /// rebuild so it always reflects the current roster (the manager
+  /// instance itself outlives roster loads).
+  PeerNameResolver? resolvePeerName;
   final Ringer _ringer;
   final Future<void> Function(CallLogPayload)? _writeCallLog;
   final Duration _disconnectedGrace;
@@ -110,6 +113,25 @@ class CallManager extends ChangeNotifier {
   Map<String, ActiveCall> get calls => Map.unmodifiable(_calls);
   ActiveCall? get activeCall =>
       _calls.values.isEmpty ? null : _calls.values.last;
+
+  /// Re-resolve display names for active calls via the current
+  /// [resolvePeerName]. Lets a call placed before the roster loaded
+  /// stop showing a raw peer id once names become available.
+  void refreshPeerNames() {
+    final resolver = resolvePeerName;
+    if (resolver == null) return;
+    var changed = false;
+    for (final call in _calls.values) {
+      if (call.peerDisplayName == null || call.peerDisplayName == call.peerId) {
+        final name = resolver(call.peerId);
+        if (name != null && name.isNotEmpty && name != call.peerDisplayName) {
+          call.peerDisplayName = name;
+          changed = true;
+        }
+      }
+    }
+    if (changed) notifyListeners();
+  }
 
   /// Initiates an outgoing call to [peer] at [peerFullJid]. Creates a
   /// fresh [RtcSession] via the adapter, extracts an SDP offer,
@@ -130,7 +152,7 @@ class CallManager extends ChangeNotifier {
       peerId: peer.id,
       peerDisplayName: peer.display.isNotEmpty
           ? peer.display
-          : _resolvePeerName?.call(peer.id),
+          : resolvePeerName?.call(peer.id),
       session: session,
       hasVideo: video,
       state: session.state,
@@ -304,7 +326,7 @@ class CallManager extends ChangeNotifier {
       direction: CallDirection.incoming,
       peerFullJid: e.fromFullJid,
       peerId: peerId,
-      peerDisplayName: _resolvePeerName?.call(peerId),
+      peerDisplayName: resolvePeerName?.call(peerId),
       session: session,
       hasVideo: sdp.contains('m=video'),
       state: session.state,
@@ -448,7 +470,7 @@ CallManager callManagerCapsule(CapsuleHandle use) {
     );
   }
 
-  return use.disposable<CallManager>(
+  final manager = use.disposable<CallManager>(
     () => CallManager(
       adapter: adapter,
       xmpp: xmpp,
@@ -460,6 +482,11 @@ CallManager callManagerCapsule(CapsuleHandle use) {
     (m) => m.dispose(),
     [adapter, xmpp, me?.id],
   );
+  // The manager instance outlives roster loads; refresh its resolver
+  // each rebuild so the call UI shows names instead of raw peer ids.
+  manager.resolvePeerName = resolvePeerName;
+  manager.refreshPeerNames();
+  return manager;
 }
 
 /// Ringer factory capsule — overridable by tests via
