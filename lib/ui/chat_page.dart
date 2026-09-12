@@ -16,6 +16,7 @@ import '../state/capsules/messages_capsule.dart';
 import '../state/capsules/active_thread_capsule.dart';
 import '../state/capsules/presence_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
+import '../state/capsules/xmpp_capsule.dart';
 import '../state/models/presence.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
@@ -33,6 +34,7 @@ class ChatPage extends RearchConsumer {
     final config = use(configCapsule);
     final actions = use(chatActionsCapsule);
     final callManager = use(callManagerCapsule);
+    final xmpp = use(xmppCapsule);
     final me = use(authCapsule).me;
     final threadKey = '${peer.id}@${config.xmppDomain}';
     final controller = use(chatControllerCapsule(threadKey));
@@ -55,6 +57,13 @@ class ChatPage extends RearchConsumer {
         if (activeThread.value == peer.id) activeThread.value = null;
       };
     }, [peer.id]);
+
+    // Probe the peer's presence on open so the header shows a fresh
+    // online/offline state even if we missed the last broadcast.
+    use.effect(() {
+      xmpp.probePresence(threadKey);
+      return null;
+    }, [threadKey]);
 
     use.effect(() {
       Timer? pauseTimer;
@@ -363,7 +372,11 @@ class _PeerHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final subtitle = isTyping ? 'typing�' : _presenceLabel(presence, peer);
+    final scheme = Theme.of(context).colorScheme;
+    final show = presence?.show ?? peer.presenceShow;
+    final online = show == 'online' || show == 'chat';
+    final subtitle = isTyping ? 'typing…' : _presenceLabel(presence, peer);
+    final highlight = isTyping || online;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -375,6 +388,9 @@ class _PeerHeader extends StatelessWidget {
             subtitle,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontStyle: isTyping ? FontStyle.italic : FontStyle.normal,
+              color: highlight
+                  ? PhoneTokens.callActive
+                  : scheme.onSurfaceVariant,
             ),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
@@ -402,6 +418,6 @@ String _presenceLabel(Presence? p, RainbowUser u) {
     'xa' => 'extended away',
     _ => 'offline',
   };
-  if (status != null && status.isNotEmpty) return '$label � $status';
+  if (status != null && status.isNotEmpty) return '$label · $status';
   return label;
 }
