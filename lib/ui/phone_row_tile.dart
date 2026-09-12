@@ -144,10 +144,7 @@ class _TrailingCluster extends StatelessWidget {
             child: _UnreadPill(count: unreadCount),
           )
         else if (trailing != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: trailing,
-          ),
+          Padding(padding: const EdgeInsets.only(top: 2), child: trailing),
       ],
     );
   }

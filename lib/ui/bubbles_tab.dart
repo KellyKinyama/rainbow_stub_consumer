@@ -8,6 +8,7 @@ import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import 'bubble_chat_page.dart';
+import 'phone_empty.dart';
 import 'phone_row_tile.dart';
 
 class BubblesTab extends RearchConsumer {
@@ -203,22 +204,19 @@ class _BubblesBody extends StatelessWidget {
                 const Divider(),
               ],
               if (totalCount == 0 && pendingInvites.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(48),
-                  child: Center(child: Text('No bubbles yet')),
+                const PhoneNoItems(
+                  icon: Icons.forum_outlined,
+                  label: 'No bubbles yet. Tap the + button to create one.',
                 )
               else if (list.isEmpty && query.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(48),
-                  child: Center(child: Text('No match for "$query"')),
+                PhoneNoItems(
+                  icon: Icons.search_off,
+                  label: 'No match for "$query"',
                 )
               else
                 for (final b in list)
                   PhoneRowTile(
-                    avatar: PhoneAvatar(
-                      label: b.name,
-                      icon: Icons.forum,
-                    ),
+                    avatar: PhoneAvatar(label: b.name, icon: Icons.forum),
                     title: b.name,
                     subtitle: b.topic ?? '${b.members.length} members',
                     unreadCount: unread[b.id] ?? 0,

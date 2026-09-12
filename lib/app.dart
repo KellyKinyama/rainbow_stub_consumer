@@ -92,7 +92,6 @@ class _LifecycleObserver with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) => _onChange(state);
 }
 
-
 ThemeData _buildLightTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: PhoneTokens.accent,
@@ -147,7 +146,11 @@ ThemeData _buildTheme(ColorScheme scheme, Color scaffoldBg) {
       minVerticalPadding: 4,
       horizontalTitleGap: 12,
     ),
-    dividerTheme: DividerThemeData(color: scheme.outline, thickness: 1, space: 1),
+    dividerTheme: DividerThemeData(
+      color: scheme.outline,
+      thickness: 1,
+      space: 1,
+    ),
     inputDecorationTheme: const InputDecorationTheme(
       border: OutlineInputBorder(),
     ),

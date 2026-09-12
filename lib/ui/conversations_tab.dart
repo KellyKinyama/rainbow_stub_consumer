@@ -7,6 +7,7 @@ import '../state/capsules/conversations_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import 'chat_page.dart';
+import 'phone_empty.dart';
 import 'phone_row_tile.dart';
 
 /// "Recent" tab — mirrors the RN sample's ``Conversations`` list.
@@ -85,31 +86,9 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 48,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'No recent conversations',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Open a contact from the Contacts tab to start chatting.',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-          ],
-        ),
-      ),
+    return const PhoneNoItems(
+      icon: Icons.chat_bubble_outline,
+      label: 'No recent conversations. Open a contact to start chatting.',
     );
   }
 }

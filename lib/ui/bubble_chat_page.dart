@@ -18,6 +18,7 @@ import 'chat_widgets.dart';
 import 'bubble_details_page.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
+import 'phone_round_button.dart';
 import 'shared_files_page.dart';
 import 'theme_tokens.dart';
 
@@ -179,9 +180,9 @@ class BubbleChatPage extends RearchConsumer {
           ],
         ),
         actions: [
-          IconButton(
+          PhoneRoundButton(
             tooltip: 'Shared files',
-            icon: const Icon(Icons.folder_open),
+            icon: Icons.folder_open,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) =>
@@ -189,15 +190,16 @@ class BubbleChatPage extends RearchConsumer {
               ),
             ),
           ),
-          IconButton(
+          PhoneRoundButton(
             tooltip: 'Bubble details',
-            icon: const Icon(Icons.info_outline),
+            icon: Icons.info_outline,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => BubbleDetailsPage(bubble: bubble),
               ),
             ),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(

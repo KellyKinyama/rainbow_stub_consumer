@@ -11,6 +11,7 @@ import '../state/capsules/rest_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/models/presence.dart';
 import 'chat_page.dart';
+import 'phone_empty.dart';
 import 'phone_row_tile.dart';
 
 class ContactsTab extends RearchConsumer {
@@ -55,13 +56,14 @@ class ContactsTab extends RearchConsumer {
             .where((e) => matches(e.peer))
             .toList(growable: false);
         if (data.isEmpty) {
-          list = const Center(child: Text('No contacts yet'));
+          list = const PhoneNoItems(
+            icon: Icons.person_add_alt_1,
+            label: 'No contacts yet. Tap the + button to add one.',
+          );
         } else if (filtered.isEmpty) {
-          list = Center(
-            child: Text(
-              'No match for "$query"',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+          list = PhoneNoItems(
+            icon: Icons.search_off,
+            label: 'No match for "$query"',
           );
         } else {
           list = ListView.separated(
@@ -74,8 +76,8 @@ class ContactsTab extends RearchConsumer {
               final subtitle = livePresence?.status?.isNotEmpty == true
                   ? livePresence!.status!
                   : (live.presenceStatus?.isNotEmpty == true
-                      ? live.presenceStatus!
-                      : live.loginEmail);
+                        ? live.presenceStatus!
+                        : live.loginEmail);
               return PhoneRowTile(
                 avatar: PhoneAvatar(
                   label: live.display,

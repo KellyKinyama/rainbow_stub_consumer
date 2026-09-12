@@ -398,7 +398,6 @@ class LoadOlderChip extends StatelessWidget {
   }
 }
 
-
 class PhoneTextBubble extends StatelessWidget {
   const PhoneTextBubble({
     super.key,
@@ -416,11 +415,11 @@ class PhoneTextBubble extends StatelessWidget {
     final radius = const Radius.circular(PhoneTokens.bubbleRadius);
     final tail = const Radius.circular(2);
     return Align(
-      alignment:
-          isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+      alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width *
+          maxWidth:
+              MediaQuery.of(context).size.width *
               PhoneTokens.bubbleMaxWidthFactor,
         ),
         child: Container(

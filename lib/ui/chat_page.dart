@@ -20,6 +20,7 @@ import '../state/models/presence.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'forward_picker.dart';
+import 'phone_round_button.dart';
 import 'shared_files_page.dart';
 import 'theme_tokens.dart';
 
@@ -201,29 +202,24 @@ class ChatPage extends RearchConsumer {
           isTyping: peerIsTyping,
         ),
         actions: [
-          IconButton(
+          PhoneRoundButton(
             tooltip: 'Voice call',
-            icon: const Icon(Icons.call),
-            onPressed: () => callManager.startCall(
-              peer: peer,
-              // M-3 targets the peer's bare JID; a real deployment
-              // would pick a specific resource. The stub's Jingle
-              // router accepts either.
-              peerFullJid: threadKey,
-            ),
+            icon: Icons.call,
+            onPressed: () =>
+                callManager.startCall(peer: peer, peerFullJid: threadKey),
           ),
-          IconButton(
+          PhoneRoundButton(
             tooltip: 'Video call',
-            icon: const Icon(Icons.videocam),
+            icon: Icons.videocam,
             onPressed: () => callManager.startCall(
               peer: peer,
               peerFullJid: threadKey,
               video: true,
             ),
           ),
-          IconButton(
+          PhoneRoundButton(
             tooltip: 'Shared files',
-            icon: const Icon(Icons.folder_open),
+            icon: Icons.folder_open,
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) =>
@@ -231,6 +227,7 @@ class ChatPage extends RearchConsumer {
               ),
             ),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: Column(
