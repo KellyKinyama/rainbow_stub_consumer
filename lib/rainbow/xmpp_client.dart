@@ -57,6 +57,47 @@ class XmppStanzaError extends XmppEvent {
   final String? text;
 }
 
+/// Thrown by [RainbowXmppClient.sendIq] when the peer answers an IQ with
+/// `type="error"`. Mirrors RFC 6120 §8.3 error structure.
+class XmppIqError implements Exception {
+  XmppIqError({required this.condition, this.type, this.text});
+
+  factory XmppIqError.from(XmlElement iq) {
+    final err = iq.getElement('error');
+    var condition = 'undefined-condition';
+    String? text;
+    String? type;
+    if (err != null) {
+      type = err.getAttribute('type');
+      for (final c in err.childElements) {
+        if (c.localName == 'text') {
+          text = c.innerText;
+        } else {
+          condition = c.localName ?? condition;
+        }
+      }
+    }
+    return XmppIqError(condition: condition, type: type, text: text);
+  }
+
+  final String condition;
+
+  /// RFC 6120 §8.3.2 error type: auth | cancel | modify | wait.
+  final String? type;
+  final String? text;
+
+  @override
+  String toString() =>
+      'XmppIqError($type/$condition${text != null ? ': $text' : ''})';
+}
+
+/// Internal bookkeeping for an in-flight [RainbowXmppClient.sendIq].
+class _PendingIq {
+  _PendingIq(this.completer, this.timer);
+  final Completer<XmlElement> completer;
+  final Timer timer;
+}
+
 class XmppChatMessage extends XmppEvent {
   const XmppChatMessage({
     required this.from,
@@ -306,6 +347,9 @@ class RainbowXmppClient {
   final _pendingAcks = <int, String>{};
   final _outbound = <int, String>{};
 
+  // RFC 6120 §8.2.3 outstanding request/response IQs keyed by id.
+  final _pendingIqs = <String, _PendingIq>{};
+
   /// True when the last `<enabled/>` announced `resume="true"` and a
   /// non-empty [_smid] — i.e. a subsequent [resume] call is meaningful.
   bool get canResume => _smResumable && _smid.isNotEmpty;
@@ -376,10 +420,12 @@ class RainbowXmppClient {
       },
       onDone: () {
         if (!incoming.isClosed) incoming.close();
+        _failAllPendingIqs('ws done');
         _events.add(const XmppDisconnected('ws done'));
       },
       onError: (e) {
         if (!incoming.isClosed) incoming.close();
+        _failAllPendingIqs(e.toString());
         _events.add(XmppDisconnected(e.toString()));
       },
     );
@@ -506,10 +552,12 @@ class RainbowXmppClient {
       },
       onDone: () {
         if (!incoming.isClosed) incoming.close();
+        _failAllPendingIqs('ws done');
         _events.add(const XmppDisconnected('ws done'));
       },
       onError: (e) {
         if (!incoming.isClosed) incoming.close();
+        _failAllPendingIqs(e.toString());
         _events.add(XmppDisconnected(e.toString()));
       },
     );
@@ -604,8 +652,22 @@ class RainbowXmppClient {
       return;
     }
     if (_smEnabled) _hIn++;
+    final type = el.getAttribute('type');
+    // RFC 6120 §8.2.3 — complete a pending sendIq() future by matching id.
+    if (el.localName == 'iq' && (type == 'result' || type == 'error')) {
+      final pending = _pendingIqs.remove(el.getAttribute('id') ?? '');
+      if (pending != null) {
+        pending.timer.cancel();
+        if (type == 'error') {
+          pending.completer.completeError(XmppIqError.from(el));
+        } else {
+          pending.completer.complete(el);
+        }
+        return;
+      }
+    }
     // RFC 6120 §8.3 stanza error — surface instead of dropping.
-    if (el.getAttribute('type') == 'error') {
+    if (type == 'error') {
       final kind = el.localName;
       if (kind == 'iq' || kind == 'message' || kind == 'presence') {
         _events.add(_parseStanzaError(kind!, el));
@@ -658,6 +720,49 @@ class RainbowXmppClient {
       condition: condition,
       text: text,
     );
+  }
+
+  /// RFC 6120 §8.2.3 request/response IQ. Wraps [payload] (the child
+  /// element XML) in an `<iq>` with a generated id and completes when a
+  /// matching result/error arrives on the routing loop. Throws
+  /// [XmppIqError] on an error response, or [TimeoutException] if no
+  /// reply lands within [timeout]. Only usable after `connect()`/
+  /// `resume()` has started routing (the login handshake awaits inline).
+  Future<XmlElement> sendIq({
+    required String type,
+    String payload = '',
+    String? to,
+    String? id,
+    Duration timeout = const Duration(seconds: 15),
+  }) {
+    final iqId =
+        id ?? 'iq-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+    final completer = Completer<XmlElement>();
+    final timer = Timer(timeout, () {
+      if (_pendingIqs.remove(iqId) != null && !completer.isCompleted) {
+        completer.completeError(TimeoutException('iq $iqId timed out', timeout));
+      }
+    });
+    _pendingIqs[iqId] = _PendingIq(completer, timer);
+    final toAttr = to != null ? ' to="${_esc(to)}"' : '';
+    _send('<iq type="${_esc(type)}" id="$iqId"$toAttr>$payload</iq>');
+    return completer.future;
+  }
+
+  /// XEP-0199 ping. Resolves when the server (or [to], if given) answers.
+  Future<void> ping({String? to}) =>
+      sendIq(type: 'get', payload: '<ping xmlns="urn:xmpp:ping"/>', to: to);
+
+  void _failAllPendingIqs(String reason) {
+    if (_pendingIqs.isEmpty) return;
+    final pending = _pendingIqs.values.toList();
+    _pendingIqs.clear();
+    for (final p in pending) {
+      p.timer.cancel();
+      if (!p.completer.isCompleted) {
+        p.completer.completeError(StateError('iq aborted: $reason'));
+      }
+    }
   }
 
   void _handleIq(XmlElement el) {
