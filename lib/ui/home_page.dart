@@ -65,48 +65,64 @@ class HomePage extends RearchConsumer {
     final (tab, setTab) = use.state<int>(0);
 
     // In-app snackbar toast for incoming 1:1 or MUC messages when
-    // the user is NOT currently inside the target thread. Suppresses
-    // own carbons and empty bodies.
+    // the user is NOT currently inside the target thread. Resolves ids
+    // to display names via the roster (1:1 + group sender) and bubbles
+    // (group room). Suppresses own carbons and empty bodies.
     use.effect(() {
       final myId = me?.id;
       if (myId == null) return null;
+      final rosterNames = {for (final r in roster) r.peer.id: r.peer.display};
+      final bubbleNames = <String, String>{};
+      if (bubblesAsync case AsyncData(:final data)) {
+        for (final b in data) {
+          bubbleNames[b.id] = b.name;
+        }
+      }
       final scaffold = ScaffoldMessenger.of(context);
+      void toast(String title, String body) {
+        scaffold.showSnackBar(
+          SnackBar(
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+            content: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+        );
+      }
+
       final sub = events
           .where((e) => e is XmppChatMessage)
           .cast<XmppChatMessage>()
           .where((e) => e.body.isNotEmpty)
           .listen((e) {
-            final fromLocal = _localPart(e.from);
-            if (fromLocal == myId) return;
-            final key = e.isGroupChat ? _localPart(e.to) : fromLocal;
-            if (key.isEmpty || key == activeThread.value) return;
-            String label = key;
-            for (final r in roster) {
-              if (r.peer.id == key) {
-                label = r.peer.display;
-                break;
-              }
+            if (e.isGroupChat) {
+              // MUC delivery: from = <senderId>@domain/res, to =
+              // <bubbleId>@muc.<domain>.
+              final bubbleId = _localPart(e.to);
+              final senderId = _localPart(e.from);
+              if (senderId == myId) return; // own group echo
+              if (bubbleId.isEmpty || bubbleId == activeThread.value) return;
+              final room = bubbleNames[bubbleId] ?? 'Group';
+              final sender = rosterNames[senderId] ?? senderId;
+              toast('$room · $sender', e.body);
+            } else {
+              final fromLocal = _localPart(e.from);
+              if (fromLocal == myId) return; // own carbon
+              if (fromLocal.isEmpty || fromLocal == activeThread.value) return;
+              toast(rosterNames[fromLocal] ?? fromLocal, e.body);
             }
-            scaffold.showSnackBar(
-              SnackBar(
-                behavior: SnackBarBehavior.floating,
-                duration: const Duration(seconds: 3),
-                content: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      label,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    Text(e.body, maxLines: 2, overflow: TextOverflow.ellipsis),
-                  ],
-                ),
-              ),
-            );
           });
       return sub.cancel;
-    }, [events, me?.id, activeThread.value]);
+    }, [events, me?.id, activeThread.value, roster, bubblesAsync]);
 
     const pages = [ConversationsTab(), ContactsTab(), BubblesTab()];
     const titles = ['Recent', 'Contacts', 'Bubbles'];
