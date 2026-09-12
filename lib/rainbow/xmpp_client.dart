@@ -166,6 +166,18 @@ class XmppPresenceUpdate extends XmppEvent {
   final String? status;
 }
 
+/// RFC 6121 §3 inbound presence subscription stanza — one of
+/// `subscribe` / `subscribed` / `unsubscribe` / `unsubscribed`. UI can
+/// prompt to approve/deny an inbound `subscribe`, or refresh the roster
+/// on `subscribed` / `unsubscribed`.
+class XmppSubscription extends XmppEvent {
+  const XmppSubscription({required this.fromBare, required this.type});
+  final String fromBare;
+
+  /// subscribe | subscribed | unsubscribe | unsubscribed.
+  final String type;
+}
+
 /// XEP-0184 `<received>` or XEP-0333 `<received>` — the sender's message
 /// was delivered to the recipient.
 class XmppDeliveryReceipt extends XmppEvent {
@@ -740,7 +752,9 @@ class RainbowXmppClient {
     final completer = Completer<XmlElement>();
     final timer = Timer(timeout, () {
       if (_pendingIqs.remove(iqId) != null && !completer.isCompleted) {
-        completer.completeError(TimeoutException('iq $iqId timed out', timeout));
+        completer.completeError(
+          TimeoutException('iq $iqId timed out', timeout),
+        );
       }
     });
     _pendingIqs[iqId] = _PendingIq(completer, timer);
@@ -1045,12 +1059,40 @@ class RainbowXmppClient {
         ? from.substring(0, from.indexOf('/'))
         : from;
     final type = el.getAttribute('type');
+    // RFC 6121 §3 subscription stanzas surface as a distinct event.
+    if (type == 'subscribe' ||
+        type == 'subscribed' ||
+        type == 'unsubscribe' ||
+        type == 'unsubscribed') {
+      _events.add(XmppSubscription(fromBare: bare, type: type!));
+      return;
+    }
     final show = type == 'unavailable'
         ? 'offline'
         : (el.getElement('show')?.innerText ?? 'online');
     final status = el.getElement('status')?.innerText;
     _events.add(XmppPresenceUpdate(fromBare: bare, show: show, status: status));
   }
+
+  /// RFC 6121 §3.1 — request a subscription to [bareJid]'s presence.
+  void subscribePresence(String bareJid) =>
+      _send('<presence to="${_esc(bareJid)}" type="subscribe"/>');
+
+  /// Approve an inbound subscription request from [bareJid] (§3.1.4).
+  void approveSubscription(String bareJid) =>
+      _send('<presence to="${_esc(bareJid)}" type="subscribed"/>');
+
+  /// Deny/cancel a subscription from [bareJid] (§3.2).
+  void denySubscription(String bareJid) =>
+      _send('<presence to="${_esc(bareJid)}" type="unsubscribed"/>');
+
+  /// Cancel our own subscription to [bareJid] (§3.3).
+  void unsubscribePresence(String bareJid) =>
+      _send('<presence to="${_esc(bareJid)}" type="unsubscribe"/>');
+
+  /// XEP/RFC presence probe — ask the server for [bareJid]'s presence.
+  void probePresence(String bareJid) =>
+      _send('<presence to="${_esc(bareJid)}" type="probe"/>');
 
   void sendChat({
     required String toBareJid,
