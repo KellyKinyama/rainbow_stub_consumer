@@ -13,6 +13,7 @@ import '../state/models/presence.dart';
 import 'chat_page.dart';
 import 'phone_empty.dart';
 import 'phone_row_tile.dart';
+import 'phone_search_field.dart';
 
 class ContactsTab extends RearchConsumer {
   const ContactsTab({super.key});
@@ -99,7 +100,7 @@ class ContactsTab extends RearchConsumer {
     return Scaffold(
       body: Column(
         children: [
-          _SearchField(hint: 'Search contacts', onChanged: setQuery),
+          PhoneSearchField(hint: 'Search contacts', onChanged: setQuery),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () async {
@@ -142,32 +143,6 @@ class ContactsTab extends RearchConsumer {
       if (local == u.id) return map[key];
     }
     return null;
-  }
-}
-
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.hint, required this.onChanged});
-  final String hint;
-  final ValueChanged<String> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: TextField(
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          isDense: true,
-          prefixIcon: const Icon(Icons.search),
-          hintText: hint,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(24),
-            borderSide: BorderSide.none,
-          ),
-          filled: true,
-        ),
-      ),
-    );
   }
 }
 

@@ -145,17 +145,47 @@ class HomePage extends RearchConsumer {
               }
             },
             itemBuilder: (_) => const [
-              PopupMenuItem(value: 'profile', child: Text('My profile')),
-              PopupMenuItem(value: 'calls', child: Text('Recent calls')),
-              PopupMenuDivider(),
-              PopupMenuItem(value: 'online', child: Text('Presence: online')),
-              PopupMenuItem(value: 'away', child: Text('Presence: away')),
               PopupMenuItem(
-                value: 'dnd',
-                child: Text('Presence: do not disturb'),
+                value: 'profile',
+                child: _MenuRow(icon: Icons.person, label: 'My profile'),
+              ),
+              PopupMenuItem(
+                value: 'calls',
+                child: _MenuRow(icon: Icons.call, label: 'Recent calls'),
               ),
               PopupMenuDivider(),
-              PopupMenuItem(value: 'signout', child: Text('Sign out')),
+              PopupMenuItem(
+                value: 'online',
+                child: _MenuRow(
+                  icon: Icons.circle,
+                  iconColor: Colors.green,
+                  label: 'Presence: online',
+                ),
+              ),
+              PopupMenuItem(
+                value: 'away',
+                child: _MenuRow(
+                  icon: Icons.circle,
+                  iconColor: Colors.orange,
+                  label: 'Presence: away',
+                ),
+              ),
+              PopupMenuItem(
+                value: 'dnd',
+                child: _MenuRow(
+                  icon: Icons.circle,
+                  iconColor: Colors.red,
+                  label: 'Presence: do not disturb',
+                ),
+              ),
+              PopupMenuDivider(),
+              PopupMenuItem(
+                value: 'signout',
+                child: _MenuRow(
+                  icon: Icons.logout,
+                  label: 'Sign out',
+                ),
+              ),
             ],
           ),
         ],
@@ -317,4 +347,33 @@ class _OutboxBanner extends StatelessWidget {
 String _localPart(String jid) {
   final at = jid.indexOf('@');
   return at < 0 ? jid : jid.substring(0, at);
+}
+
+
+class _MenuRow extends StatelessWidget {
+  const _MenuRow({
+    required this.icon,
+    required this.label,
+    this.iconColor,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color? iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          icon,
+          size: 16,
+          color: iconColor ?? Theme.of(context).colorScheme.onSurface,
+        ),
+        const SizedBox(width: 10),
+        Text(label),
+      ],
+    );
+  }
 }

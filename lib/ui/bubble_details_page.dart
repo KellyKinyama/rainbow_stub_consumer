@@ -8,6 +8,7 @@ import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import 'bubble_invite_sheet.dart';
+import 'phone_section_heading.dart';
 
 /// Member list + edit + invite + leave / delete for a single bubble.
 /// Pushed from the info button in [BubbleChatPage].
@@ -184,15 +185,8 @@ class BubbleDetailsPage extends RearchConsumer {
     );
   }
 
-  Widget _sectionTitle(BuildContext context, String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-    child: Text(
-      text,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    ),
-  );
+  Widget _sectionTitle(BuildContext context, String text) =>
+      PhoneSectionHeading(text: text);
 
   Future<void> _editSheet(
     BuildContext context,

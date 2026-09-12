@@ -10,6 +10,8 @@ import '../state/capsules/unread_capsule.dart';
 import 'bubble_chat_page.dart';
 import 'phone_empty.dart';
 import 'phone_row_tile.dart';
+import 'phone_search_field.dart';
+import 'phone_section_heading.dart';
 
 class BubblesTab extends RearchConsumer {
   const BubblesTab({super.key});
@@ -136,15 +138,8 @@ class BubblesTab extends RearchConsumer {
     );
   }
 
-  static Widget _sectionTitle(BuildContext context, String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-    child: Text(
-      text,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    ),
-  );
+  static Widget _sectionTitle(BuildContext context, String text) =>
+      PhoneSectionHeading(text: text);
 }
 
 class _BubblesBody extends StatelessWidget {
@@ -171,21 +166,9 @@ class _BubblesBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-          child: TextField(
-            onChanged: onQueryChanged,
-            decoration: InputDecoration(
-              isDense: true,
-              prefixIcon: const Icon(Icons.search),
-              hintText: 'Search bubbles',
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(24),
-                borderSide: BorderSide.none,
-              ),
-              filled: true,
-            ),
-          ),
+        PhoneSearchField(
+          hint: 'Search bubbles',
+          onChanged: onQueryChanged,
         ),
         Expanded(
           child: ListView(
