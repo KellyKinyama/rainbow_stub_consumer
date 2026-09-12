@@ -6,14 +6,15 @@ import 'package:rearch/rearch.dart';
 
 import '../rainbow/models.dart';
 import '../rainbow/rest_client.dart';
+import '../state/capsules/detail_selection_capsule.dart';
 import '../state/capsules/presence_capsule.dart';
 import '../state/capsules/rest_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/models/presence.dart';
-import 'chat_page.dart';
 import 'phone_empty.dart';
 import 'phone_row_tile.dart';
 import 'phone_search_field.dart';
+import 'responsive.dart';
 
 class ContactsTab extends RearchConsumer {
   const ContactsTab({super.key});
@@ -38,6 +39,7 @@ class ContactsTab extends RearchConsumer {
     final presence = use(presenceCapsule);
     final rest = use(restCapsule);
     final refresher = use(rosterRefresherCapsule);
+    final selection = use(detailSelectionCapsule);
     final (query, setQuery) = use.state<String>('');
     final normalized = query.toLowerCase().trim();
     bool matches(RainbowUser u) {
@@ -88,9 +90,7 @@ class ContactsTab extends RearchConsumer {
                 ),
                 title: live.display,
                 subtitle: subtitle,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => ChatPage(peer: live)),
-                ),
+                onTap: () => openPeerChat(context, selection, live),
               );
             },
           );

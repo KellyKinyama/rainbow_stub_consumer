@@ -4,11 +4,12 @@ import 'package:rearch/rearch.dart';
 
 import '../rainbow/models.dart';
 import '../state/capsules/conversations_capsule.dart';
+import '../state/capsules/detail_selection_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
-import 'chat_page.dart';
 import 'phone_empty.dart';
 import 'phone_row_tile.dart';
+import 'responsive.dart';
 
 /// "Recent" tab — mirrors the RN sample's ``Conversations`` list.
 /// Session-scoped: entries are populated as XMPP 1:1 messages arrive
@@ -22,6 +23,7 @@ class ConversationsTab extends RearchConsumer {
   Widget build(BuildContext context, WidgetHandle use) {
     final conversations = use(conversationsCapsule);
     final unread = use(unreadCapsule);
+    final selection = use(detailSelectionCapsule);
     if (conversations.isEmpty) {
       return const _EmptyState();
     }
@@ -37,7 +39,7 @@ class ConversationsTab extends RearchConsumer {
           subtitle: _subtitleFor(c),
           trailingText: _timeLabel(c.lastAt),
           unreadCount: badge,
-          onTap: () => _openChatFromRoster(context, use, c.peerId),
+          onTap: () => _openChatFromRoster(context, use, c.peerId, selection),
         );
       },
     );
@@ -63,6 +65,7 @@ class ConversationsTab extends RearchConsumer {
     BuildContext context,
     WidgetHandle use,
     String peerId,
+    ValueWrapper<ChatSelection?> selection,
   ) {
     final rosterAsync = use(rosterCapsule);
     final entries = switch (rosterAsync) {
@@ -75,9 +78,7 @@ class ConversationsTab extends RearchConsumer {
     final peer = match.isEmpty
         ? RainbowUser(id: peerId, loginEmail: peerId)
         : match.first.peer;
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => ChatPage(peer: peer)));
+    openPeerChat(context, selection, peer);
   }
 }
 

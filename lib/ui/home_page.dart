@@ -9,17 +9,21 @@ import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/connectivity_capsule.dart';
+import '../state/capsules/detail_selection_capsule.dart';
 import '../state/capsules/outbox_count_capsule.dart';
 import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import '../state/capsules/xmpp_capsule.dart';
+import 'bubble_chat_page.dart';
 import 'bubbles_tab.dart';
 import 'call_log_page.dart';
+import 'chat_page.dart';
 import 'contacts_tab.dart';
 import 'conversations_tab.dart';
 import 'profile_page.dart';
+import 'responsive.dart';
 
 class HomePage extends RearchConsumer {
   const HomePage({super.key});
@@ -38,6 +42,7 @@ class HomePage extends RearchConsumer {
     final unread = use(unreadCapsule);
     final activeThread = use(activeThreadCapsule);
     final events = use(xmppEventsCapsule);
+    final selection = use(detailSelectionCapsule);
     final rosterAsync = use(rosterCapsule);
     final roster = switch (rosterAsync) {
       AsyncData(:final data) => data,
@@ -187,22 +192,24 @@ class HomePage extends RearchConsumer {
           ),
         ],
       ),
-      body: permissions.anyDenied
-          ? Column(
-              children: [
-                if (!online) const _OfflineBanner(),
-                if (outboxCount > 0) _OutboxBanner(count: outboxCount),
-                _PermissionsBanner(state: permissions),
-                Expanded(child: pages[tab]),
-              ],
-            )
-          : Column(
-              children: [
-                if (!online) const _OfflineBanner(),
-                if (outboxCount > 0) _OutboxBanner(count: outboxCount),
-                Expanded(child: pages[tab]),
-              ],
-            ),
+      body: Column(
+        children: [
+          if (!online) const _OfflineBanner(),
+          if (outboxCount > 0) _OutboxBanner(count: outboxCount),
+          if (permissions.anyDenied) _PermissionsBanner(state: permissions),
+          Expanded(
+            child: isWideLayout(context)
+                ? Row(
+                    children: [
+                      SizedBox(width: 360, child: pages[tab]),
+                      const VerticalDivider(width: 1),
+                      Expanded(child: _DetailPane(selection: selection.value)),
+                    ],
+                  )
+                : pages[tab],
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: setTab,
@@ -365,6 +372,55 @@ class _MenuRow extends StatelessWidget {
         const SizedBox(width: 10),
         Text(label),
       ],
+    );
+  }
+}
+
+/// Right-hand detail pane of the desktop two-pane layout — renders the
+/// selected 1:1 or group chat, or a placeholder when nothing is picked.
+class _DetailPane extends StatelessWidget {
+  const _DetailPane({required this.selection});
+  final ChatSelection? selection;
+
+  @override
+  Widget build(BuildContext context) {
+    return switch (selection) {
+      PeerSelection(:final peer) => ChatPage(
+        key: ValueKey('peer:${peer.id}'),
+        peer: peer,
+      ),
+      BubbleSelection(:final bubble) => BubbleChatPage(
+        key: ValueKey('bubble:${bubble.id}'),
+        bubble: bubble,
+      ),
+      null => const _NoConversationSelected(),
+    };
+  }
+}
+
+class _NoConversationSelected extends StatelessWidget {
+  const _NoConversationSelected();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ColoredBox(
+      color: scheme.surfaceContainerLow,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.chat_bubble_outline, size: 72, color: scheme.outline),
+            const SizedBox(height: 16),
+            Text(
+              'Select a conversation',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(color: scheme.outline),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

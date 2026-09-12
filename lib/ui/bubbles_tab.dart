@@ -6,12 +6,13 @@ import '../rainbow/models.dart';
 import '../state/capsules/bubble_invitations_capsule.dart';
 import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
+import '../state/capsules/detail_selection_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
-import 'bubble_chat_page.dart';
 import 'phone_empty.dart';
 import 'phone_row_tile.dart';
 import 'phone_search_field.dart';
 import 'phone_section_heading.dart';
+import 'responsive.dart';
 
 class BubblesTab extends RearchConsumer {
   const BubblesTab({super.key});
@@ -83,6 +84,7 @@ class BubblesTab extends RearchConsumer {
     final actions = use(chatActionsCapsule);
     final unread = use(unreadCapsule);
     final refresher = use(bubblesRefresherCapsule);
+    final selection = use(detailSelectionCapsule);
     final (query, setQuery) = use.state<String>('');
     final normalized = query.toLowerCase().trim();
     bool matches(RainbowBubble b) {
@@ -110,6 +112,7 @@ class BubblesTab extends RearchConsumer {
         query: query,
         unread: unread.counts,
         onQueryChanged: setQuery,
+        onOpen: (b) => openBubbleChat(context, selection, b),
         onAccept: (b) async {
           await actions.acceptBubbleInvitation(b);
           await invites.refresh();
@@ -150,6 +153,7 @@ class _BubblesBody extends StatelessWidget {
     required this.query,
     required this.unread,
     required this.onQueryChanged,
+    required this.onOpen,
     required this.onAccept,
     required this.onDecline,
   });
@@ -159,6 +163,7 @@ class _BubblesBody extends StatelessWidget {
   final String query;
   final Map<String, int> unread;
   final ValueChanged<String> onQueryChanged;
+  final void Function(RainbowBubble) onOpen;
   final Future<void> Function(RainbowBubble) onAccept;
   final Future<void> Function(RainbowBubble) onDecline;
 
@@ -200,11 +205,7 @@ class _BubblesBody extends StatelessWidget {
                     title: b.name,
                     subtitle: b.topic ?? '${b.members.length} members',
                     unreadCount: unread[b.id] ?? 0,
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => BubbleChatPage(bubble: b),
-                      ),
-                    ),
+                    onTap: () => onOpen(b),
                   ),
             ],
           ),
