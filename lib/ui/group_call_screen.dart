@@ -14,6 +14,7 @@ import '../state/capsules/config_capsule.dart';
 import '../state/capsules/group_call_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import 'bubble_invite_sheet.dart';
+import 'phone_call_button.dart';
 
 /// Full-screen surface for an active group call.
 ///
@@ -352,89 +353,73 @@ class _CallControlsState extends State<_CallControls> {
   Widget build(BuildContext context) {
     return Wrap(
       alignment: WrapAlignment.center,
-      spacing: 12,
-      runSpacing: 12,
+      spacing: 16,
+      runSpacing: 16,
       children: [
-        _CircleButton(
+        PhoneCallButton(
           icon: _muted ? Icons.mic_off : Icons.mic,
-          color: Colors.white24,
+          label: _muted ? 'Unmute' : 'Mute',
+          variant: _muted
+              ? PhoneCallButtonVariant.active
+              : PhoneCallButtonVariant.neutral,
           onTap: () async {
             setState(() => _muted = !_muted);
             await widget.session.setMicrophoneMuted(_muted);
           },
         ),
-        _CircleButton(
+        PhoneCallButton(
           icon: _cameraOn ? Icons.videocam : Icons.videocam_off,
-          color: Colors.white24,
+          label: _cameraOn ? 'Camera' : 'Camera off',
+          variant: _cameraOn
+              ? PhoneCallButtonVariant.neutral
+              : PhoneCallButtonVariant.active,
           onTap: () async {
             setState(() => _cameraOn = !_cameraOn);
             await widget.session.setCameraEnabled(_cameraOn);
           },
         ),
-        _CircleButton(
+        PhoneCallButton(
           icon: _speakerOn ? Icons.volume_up : Icons.volume_down,
-          color: Colors.white24,
+          label: 'Speaker',
+          variant: _speakerOn
+              ? PhoneCallButtonVariant.active
+              : PhoneCallButtonVariant.neutral,
           onTap: () async {
             setState(() => _speakerOn = !_speakerOn);
             await widget.session.setSpeakerphoneEnabled(_speakerOn);
           },
         ),
-        _CircleButton(
+        PhoneCallButton(
           icon: Icons.cameraswitch,
-          color: Colors.white24,
+          label: 'Flip',
           onTap: () => widget.session.switchCamera(),
         ),
-        _CircleButton(
+        PhoneCallButton(
           icon: Icons.person_add,
-          color: Colors.white24,
+          label: 'Add',
           onTap: widget.onAddParticipant,
         ),
         if (widget.canModerate)
-          _CircleButton(
+          PhoneCallButton(
             icon: widget.locked ? Icons.lock : Icons.lock_open,
-            color: widget.locked
-                ? Theme.of(context).colorScheme.primaryContainer
-                : Colors.white24,
+            label: widget.locked ? 'Locked' : 'Lock',
+            variant: widget.locked
+                ? PhoneCallButtonVariant.active
+                : PhoneCallButtonVariant.neutral,
             onTap: widget.onToggleLock,
           ),
-        _CircleButton(
+        PhoneCallButton(
           icon: Icons.close_fullscreen,
-          color: Colors.white24,
+          label: 'Hide',
           onTap: widget.onHideView,
         ),
-        _CircleButton(
+        PhoneCallButton(
           icon: Icons.call_end,
-          color: Theme.of(context).colorScheme.error,
+          label: 'Leave',
+          variant: PhoneCallButtonVariant.hangup,
           onTap: widget.onLeave,
         ),
       ],
-    );
-  }
-}
-
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Icon(icon, color: Colors.white, size: 26),
-        ),
-      ),
     );
   }
 }

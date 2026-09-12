@@ -166,10 +166,7 @@ class _BubblesBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        PhoneSearchField(
-          hint: 'Search bubbles',
-          onChanged: onQueryChanged,
-        ),
+        PhoneSearchField(hint: 'Search bubbles', onChanged: onQueryChanged),
         Expanded(
           child: ListView(
             children: [

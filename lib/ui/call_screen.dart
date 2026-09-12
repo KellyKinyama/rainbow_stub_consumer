@@ -4,6 +4,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import '../rainbow/webrtc_adapter.dart';
 import '../state/capsules/call_manager_capsule.dart';
+import 'phone_call_button.dart';
 
 /// Full-screen in-call surface — shown while a call is [active].
 /// Renders remote video full-bleed with a small local preview in
@@ -319,73 +320,55 @@ class _CallControlsState extends State<_CallControls> {
         widget.call.state == CallState.ringing;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _CircleButton(
+        PhoneCallButton(
           icon: _muted ? Icons.mic_off : Icons.mic,
-          color: Colors.white24,
+          label: _muted ? 'Unmute' : 'Mute',
+          variant: _muted
+              ? PhoneCallButtonVariant.active
+              : PhoneCallButtonVariant.neutral,
           onTap: () async {
             setState(() => _muted = !_muted);
             await widget.call.session.setMicrophoneMuted(_muted);
           },
         ),
         if (widget.call.hasVideo) ...[
-          const SizedBox(width: 12),
-          _CircleButton(
+          const SizedBox(width: 16),
+          PhoneCallButton(
             icon: _cameraOn ? Icons.videocam : Icons.videocam_off,
-            color: Colors.white24,
+            label: _cameraOn ? 'Camera' : 'Camera off',
+            variant: _cameraOn
+                ? PhoneCallButtonVariant.neutral
+                : PhoneCallButtonVariant.active,
             onTap: () async {
               setState(() => _cameraOn = !_cameraOn);
               await widget.call.session.setCameraEnabled(_cameraOn);
             },
           ),
-          const SizedBox(width: 12),
-          _CircleButton(
+          const SizedBox(width: 16),
+          PhoneCallButton(
             icon: Icons.cameraswitch,
-            color: Colors.white24,
+            label: 'Flip',
             onTap: () => widget.call.session.switchCamera(),
           ),
         ],
-        const SizedBox(width: 12),
+        const SizedBox(width: 16),
         if (isIncomingRinging)
-          _CircleButton(
+          PhoneCallButton(
             icon: Icons.call,
-            color: Colors.green,
+            label: 'Answer',
+            variant: PhoneCallButtonVariant.answer,
             onTap: () => widget.manager.answer(widget.call.sid),
           )
         else
-          _CircleButton(
+          PhoneCallButton(
             icon: Icons.call_end,
-            color: Theme.of(context).colorScheme.error,
+            label: 'End',
+            variant: PhoneCallButtonVariant.hangup,
             onTap: () => widget.manager.hangUp(widget.call.sid),
           ),
       ],
-    );
-  }
-}
-
-class _CircleButton extends StatelessWidget {
-  const _CircleButton({
-    required this.icon,
-    required this.color,
-    required this.onTap,
-  });
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: color,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Icon(icon, color: Colors.white, size: 26),
-        ),
-      ),
     );
   }
 }

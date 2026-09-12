@@ -181,10 +181,7 @@ class HomePage extends RearchConsumer {
               PopupMenuDivider(),
               PopupMenuItem(
                 value: 'signout',
-                child: _MenuRow(
-                  icon: Icons.logout,
-                  label: 'Sign out',
-                ),
+                child: _MenuRow(icon: Icons.logout, label: 'Sign out'),
               ),
             ],
           ),
@@ -343,19 +340,13 @@ class _OutboxBanner extends StatelessWidget {
   }
 }
 
-
 String _localPart(String jid) {
   final at = jid.indexOf('@');
   return at < 0 ? jid : jid.substring(0, at);
 }
 
-
 class _MenuRow extends StatelessWidget {
-  const _MenuRow({
-    required this.icon,
-    required this.label,
-    this.iconColor,
-  });
+  const _MenuRow({required this.icon, required this.label, this.iconColor});
 
   final IconData icon;
   final String label;

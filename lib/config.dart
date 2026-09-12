@@ -67,7 +67,7 @@ class AppConfig {
   static String _defaultScheme() {
     const override = String.fromEnvironment('STUB_SCHEME');
     if (override.isNotEmpty) return override;
-    return 'https';
+    return 'http';
   }
 
   static String _defaultHost() {
