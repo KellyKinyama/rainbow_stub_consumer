@@ -286,6 +286,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                 MamPageState.new,
               );
               final senderId = senderIdFor(e.from, isGroupChat: e.isGroupChat);
+              final isMine = myUserId != null && senderId == myUserId;
               insertFromChatMessage(
                 ChatMessage(
                   id: e.stanzaId,
@@ -293,7 +294,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   from: e.from,
                   to: e.to,
                   sentAt: e.sentAt,
-                  isMine: myUserId != null && senderId == myUserId,
+                  isMine: isMine,
                   attachment: _fromXmpp(e.attachment),
                   replyToStanzaId: e.replyToStanzaId,
                 ),
@@ -301,6 +302,18 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                 index: state.mamInsertIndex,
               );
               state.mamInsertIndex = state.mamInsertIndex + 1;
+              // Offline catch-up: a 1:1 message pulled from the archive
+              // still needs a delivery receipt + read marker, otherwise
+              // the sender's ticks never advance past "sent" — they saw
+              // no live receipt while we were offline.
+              if (!isMuc && !isMine && e.stanzaId.isNotEmpty) {
+                final peerBare = _bareJid(e.from);
+                xmpp.sendDeliveryReceipt(
+                  toBareJid: peerBare,
+                  stanzaId: e.stanzaId,
+                );
+                xmpp.sendReadMarker(toBareJid: peerBare, stanzaId: e.stanzaId);
+              }
             });
 
         // XEP-0313 <fin/> — terminates a MAM page. Updates the

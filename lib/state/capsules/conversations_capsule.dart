@@ -139,22 +139,19 @@ List<ConversationSummary> conversationsCapsule(CapsuleHandle use) {
         .where((e) => e is XmppChatMessage)
         .cast<XmppChatMessage>()
         .where((e) => !e.isGroupChat)
-        .listen(
-          (e) => fold(
-            from: e.from,
-            to: e.to,
-            body: e.body,
-            sentAt: DateTime.now(),
-          ),
-        );
+        .listen((e) {
+          fold(from: e.from, to: e.to, body: e.body, sentAt: DateTime.now());
+          _ackDelivery(xmpp, myId, e.from, e.stanzaId);
+        });
 
     final subMam = events
         .where((e) => e is XmppMamMessage)
         .cast<XmppMamMessage>()
         .where((e) => !e.isGroupChat)
-        .listen(
-          (e) => fold(from: e.from, to: e.to, body: e.body, sentAt: e.sentAt),
-        );
+        .listen((e) {
+          fold(from: e.from, to: e.to, body: e.body, sentAt: e.sentAt);
+          _ackDelivery(xmpp, myId, e.from, e.stanzaId);
+        });
 
     final subConnected = events.where((e) => e is XmppConnected).listen((_) {
       // XEP-0313 bootstrap: pull the last 50 archived 1:1 stanzas so
@@ -206,4 +203,26 @@ String _localPart(String jid) {
   if (at < 0) return jid;
   final bare = jid.substring(0, at);
   return bare;
+}
+
+String _bareJid(String jid) {
+  final slash = jid.indexOf('/');
+  return slash < 0 ? jid : jid.substring(0, slash);
+}
+
+/// Acks device-level delivery (XEP-0184 received) for an incoming 1:1
+/// message the moment we observe it — live or replayed from the archive
+/// at login — so the sender's tick advances to "delivered" even before
+/// we open the thread. Read markers stay in the per-thread capsule.
+void _ackDelivery(
+  RainbowXmppClient xmpp,
+  String? myId,
+  String from,
+  String stanzaId,
+) {
+  if (stanzaId.isEmpty || myId == null) return;
+  if (_localPart(from) == myId) return;
+  try {
+    xmpp.sendDeliveryReceipt(toBareJid: _bareJid(from), stanzaId: stanzaId);
+  } catch (_) {}
 }
