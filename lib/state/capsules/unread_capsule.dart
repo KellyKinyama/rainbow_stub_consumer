@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:rearch/rearch.dart';
 
 import '../../rainbow/xmpp_client.dart';
+import 'active_thread_capsule.dart';
 import 'auth_state_capsule.dart';
 import 'xmpp_capsule.dart';
 
@@ -28,6 +29,7 @@ class UnreadController {
 UnreadController unreadCapsule(CapsuleHandle use) {
   final events = use(xmppEventsCapsule);
   final myId = use(authCapsule).me?.id;
+  final activeThread = use(activeThreadCapsule);
   final slot = use.data<Map<String, int>>(const <String, int>{});
 
   use.effect(() {
@@ -44,6 +46,8 @@ UnreadController unreadCapsule(CapsuleHandle use) {
           if (fromLocal == myId) return;
           final key = e.isGroupChat ? _localPart(e.to) : fromLocal;
           if (key.isEmpty) return;
+          // Don't badge a thread the user is currently viewing.
+          if (key == activeThread.value) return;
           final next = Map<String, int>.from(slot.value);
           next[key] = (next[key] ?? 0) + 1;
           slot.value = next;
