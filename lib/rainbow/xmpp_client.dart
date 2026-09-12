@@ -767,6 +767,25 @@ class RainbowXmppClient {
   Future<void> ping({String? to}) =>
       sendIq(type: 'get', payload: '<ping xmlns="urn:xmpp:ping"/>', to: to);
 
+  /// XEP-0012 Last Activity — seconds since [bareJid] was last online
+  /// (0 if currently online). Returns null if the query fails/times out.
+  Future<Duration?> queryLastActivity(String bareJid) async {
+    try {
+      final resp = await sendIq(
+        type: 'get',
+        to: bareJid,
+        payload: '<query xmlns="jabber:iq:last"/>',
+        timeout: const Duration(seconds: 8),
+      );
+      final secs = int.tryParse(
+        resp.getElement('query')?.getAttribute('seconds') ?? '',
+      );
+      return secs == null ? null : Duration(seconds: secs);
+    } on Object {
+      return null;
+    }
+  }
+
   void _failAllPendingIqs(String reason) {
     if (_pendingIqs.isEmpty) return;
     final pending = _pendingIqs.values.toList();

@@ -65,6 +65,23 @@ class ChatPage extends RearchConsumer {
       return null;
     }, [threadKey]);
 
+    final peerShow = _presenceFor(peer, presence)?.show ?? peer.presenceShow;
+    final peerOnline = peerShow == 'online' || peerShow == 'chat';
+    final (lastSeen, setLastSeen) = use.state<DateTime?>(null);
+
+    // When the peer is offline, fetch XEP-0012 last activity for the
+    // "last seen …" header line.
+    use.effect(() {
+      if (peerOnline) {
+        setLastSeen(null);
+      } else {
+        xmpp.queryLastActivity(threadKey).then((d) {
+          if (d != null) setLastSeen(DateTime.now().subtract(d));
+        });
+      }
+      return null;
+    }, [threadKey, peerOnline]);
+
     use.effect(() {
       Timer? pauseTimer;
       var lastComposingSent = DateTime.fromMicrosecondsSinceEpoch(0);
@@ -209,6 +226,7 @@ class ChatPage extends RearchConsumer {
           peer: peer,
           presence: _presenceFor(peer, presence),
           isTyping: peerIsTyping,
+          lastSeen: lastSeen,
         ),
         actions: [
           PhoneRoundButton(
@@ -364,18 +382,29 @@ class _PeerHeader extends StatelessWidget {
     required this.peer,
     required this.presence,
     required this.isTyping,
+    this.lastSeen,
   });
 
   final RainbowUser peer;
   final Presence? presence;
   final bool isTyping;
+  final DateTime? lastSeen;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final show = presence?.show ?? peer.presenceShow;
     final online = show == 'online' || show == 'chat';
-    final subtitle = isTyping ? 'typing…' : _presenceLabel(presence, peer);
+    final String subtitle;
+    if (isTyping) {
+      subtitle = 'typing…';
+    } else if (online) {
+      subtitle = 'online';
+    } else if (lastSeen != null) {
+      subtitle = _lastSeenLabel(lastSeen!);
+    } else {
+      subtitle = _presenceLabel(presence, peer);
+    }
     final highlight = isTyping || online;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,6 +427,23 @@ class _PeerHeader extends StatelessWidget {
       ],
     );
   }
+}
+
+String _lastSeenLabel(DateTime t) {
+  final now = DateTime.now();
+  final diff = now.difference(t);
+  if (diff.inMinutes < 1) return 'last seen just now';
+  if (diff.inMinutes < 60) return 'last seen ${diff.inMinutes} min ago';
+  final today = DateTime(now.year, now.month, now.day);
+  final that = DateTime(t.year, t.month, t.day);
+  final hm =
+      '${t.hour.toString().padLeft(2, '0')}:'
+      '${t.minute.toString().padLeft(2, '0')}';
+  if (that == today) return 'last seen today at $hm';
+  if (that == today.subtract(const Duration(days: 1))) {
+    return 'last seen yesterday at $hm';
+  }
+  return 'last seen ${t.day}/${t.month} at $hm';
 }
 
 Presence? _presenceFor(RainbowUser u, Map<String, Presence> map) {
