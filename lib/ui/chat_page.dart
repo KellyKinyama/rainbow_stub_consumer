@@ -21,6 +21,7 @@ import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'forward_picker.dart';
 import 'shared_files_page.dart';
+import 'theme_tokens.dart';
 
 class ChatPage extends RearchConsumer {
   const ChatPage({super.key, required this.peer});
@@ -192,6 +193,7 @@ class ChatPage extends RearchConsumer {
     }
 
     return Scaffold(
+      backgroundColor: phonePaletteOf(context).chatWallpaper,
       appBar: AppBar(
         title: _PeerHeader(
           peer: peer,
@@ -285,9 +287,9 @@ class ChatPage extends RearchConsumer {
                             replyTarget: lookupTarget(msg.replyToMessageId),
                             reactions: msg.reactions,
                             onReactionTap: (e) => toggleMyReaction(msg, e),
-                            child: SimpleTextMessage(
+                            child: PhoneTextBubble(
                               message: msg,
-                              index: index,
+                              isSentByMe: isSentByMe,
                             ),
                           ),
                   imageMessageBuilder:

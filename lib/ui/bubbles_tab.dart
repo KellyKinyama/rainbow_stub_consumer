@@ -8,6 +8,7 @@ import '../state/capsules/bubbles_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import 'bubble_chat_page.dart';
+import 'phone_row_tile.dart';
 
 class BubblesTab extends RearchConsumer {
   const BubblesTab({super.key});
@@ -213,13 +214,14 @@ class _BubblesBody extends StatelessWidget {
                 )
               else
                 for (final b in list)
-                  ListTile(
-                    leading: const CircleAvatar(child: Icon(Icons.forum)),
-                    title: Text(b.name),
-                    subtitle: Text(b.topic ?? '${b.members.length} members'),
-                    trailing: (unread[b.id] ?? 0) > 0
-                        ? Badge.count(count: unread[b.id]!)
-                        : const Icon(Icons.chevron_right),
+                  PhoneRowTile(
+                    avatar: PhoneAvatar(
+                      label: b.name,
+                      icon: Icons.forum,
+                    ),
+                    title: b.name,
+                    subtitle: b.topic ?? '${b.members.length} members',
+                    unreadCount: unread[b.id] ?? 0,
                     onTap: () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => BubbleChatPage(bubble: b),

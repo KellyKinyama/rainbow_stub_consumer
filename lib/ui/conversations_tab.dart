@@ -7,6 +7,7 @@ import '../state/capsules/conversations_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import 'chat_page.dart';
+import 'phone_row_tile.dart';
 
 /// "Recent" tab — mirrors the RN sample's ``Conversations`` list.
 /// Session-scoped: entries are populated as XMPP 1:1 messages arrive
@@ -23,36 +24,18 @@ class ConversationsTab extends RearchConsumer {
     if (conversations.isEmpty) {
       return const _EmptyState();
     }
-    return ListView.builder(
+    return ListView.separated(
       itemCount: conversations.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 2),
       itemBuilder: (_, i) {
         final c = conversations[i];
         final badge = unread.counts[c.peerId] ?? 0;
-        return ListTile(
-          leading: CircleAvatar(
-            child: Text(
-              c.peerDisplay.isEmpty
-                  ? '?'
-                  : c.peerDisplay.characters.first.toUpperCase(),
-            ),
-          ),
-          title: Text(c.peerDisplay),
-          subtitle: Text(
-            _subtitleFor(c),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(_timeLabel(c.lastAt)),
-              if (badge > 0) ...[
-                const SizedBox(height: 4),
-                Badge.count(count: badge),
-              ],
-            ],
-          ),
+        return PhoneRowTile(
+          avatar: PhoneAvatar(label: c.peerDisplay),
+          title: c.peerDisplay,
+          subtitle: _subtitleFor(c),
+          trailingText: _timeLabel(c.lastAt),
+          unreadCount: badge,
           onTap: () => _openChatFromRoster(context, use, c.peerId),
         );
       },

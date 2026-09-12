@@ -11,6 +11,7 @@ import 'ui/call_overlay.dart';
 import 'ui/diagnostics_overlay.dart';
 import 'ui/home_page.dart';
 import 'ui/login_page.dart';
+import 'ui/theme_tokens.dart';
 
 /// Root navigator handle. Handed to [MaterialApp.navigatorKey] so
 /// widgets that sit above the Navigator (the incoming-call overlay
@@ -25,13 +26,8 @@ class RainbowConsumerApp extends StatelessWidget {
     return MaterialApp(
       title: 'Rainbow Stub Consumer',
       navigatorKey: rootNavigatorKey,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0086CF)),
-        useMaterial3: true,
-        inputDecorationTheme: const InputDecorationTheme(
-          border: OutlineInputBorder(),
-        ),
-      ),
+      theme: _buildLightTheme(),
+      darkTheme: _buildDarkTheme(),
       home: const _AuthGate(),
       // Stacks the incoming-call banner above every route so it stays
       // visible inside chat pages, bubble pages, etc.
@@ -94,4 +90,98 @@ class _LifecycleObserver with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) => _onChange(state);
+}
+
+
+ThemeData _buildLightTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: PhoneTokens.accent,
+    brightness: Brightness.light,
+    surface: PhoneTokens.lightPanelBg,
+    surfaceContainer: PhoneTokens.lightBodyBg,
+    surfaceContainerHighest: PhoneTokens.lightRowSelected,
+    onSurface: PhoneTokens.lightTextPrimary,
+    onSurfaceVariant: PhoneTokens.lightTextSecondary,
+    outline: PhoneTokens.lightDivider,
+    primary: PhoneTokens.accent,
+    error: PhoneTokens.danger,
+  );
+  return _buildTheme(scheme, PhoneTokens.lightBodyBg);
+}
+
+ThemeData _buildDarkTheme() {
+  final scheme = ColorScheme.fromSeed(
+    seedColor: PhoneTokens.accent,
+    brightness: Brightness.dark,
+    surface: PhoneTokens.darkPanelBg,
+    surfaceContainer: PhoneTokens.darkBodyBg,
+    surfaceContainerHighest: PhoneTokens.darkRowSelected,
+    onSurface: PhoneTokens.darkTextPrimary,
+    onSurfaceVariant: PhoneTokens.darkTextSecondary,
+    outline: PhoneTokens.darkDivider,
+    primary: PhoneTokens.accent,
+    error: PhoneTokens.danger,
+  );
+  return _buildTheme(scheme, PhoneTokens.darkBodyBg);
+}
+
+ThemeData _buildTheme(ColorScheme scheme, Color scaffoldBg) {
+  final base = ThemeData(colorScheme: scheme, useMaterial3: true);
+  return base.copyWith(
+    scaffoldBackgroundColor: scaffoldBg,
+    appBarTheme: AppBarTheme(
+      backgroundColor: scheme.surface,
+      foregroundColor: scheme.onSurface,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      shape: Border(bottom: BorderSide(color: scheme.outline)),
+      titleTextStyle: TextStyle(
+        color: scheme.onSurface,
+        fontFamily: PhoneTokens.fontFamily,
+        fontWeight: FontWeight.w500,
+        fontSize: PhoneTokens.sectionHeadingFontSize,
+      ),
+    ),
+    listTileTheme: const ListTileThemeData(
+      dense: true,
+      minVerticalPadding: 4,
+      horizontalTitleGap: 12,
+    ),
+    dividerTheme: DividerThemeData(color: scheme.outline, thickness: 1, space: 1),
+    inputDecorationTheme: const InputDecorationTheme(
+      border: OutlineInputBorder(),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: PhoneTokens.accent,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: PhoneTokens.accent),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(foregroundColor: scheme.onSurface),
+    ),
+    floatingActionButtonTheme: FloatingActionButtonThemeData(
+      backgroundColor: PhoneTokens.accent,
+      foregroundColor: Colors.white,
+      shape: const CircleBorder(),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: scheme.surface,
+      indicatorColor: scheme.surfaceContainerHighest,
+      surfaceTintColor: Colors.transparent,
+      elevation: 1,
+      labelTextStyle: WidgetStateProperty.all(
+        TextStyle(fontFamily: PhoneTokens.fontFamily, fontSize: 12),
+      ),
+    ),
+    textTheme: base.textTheme.apply(
+      fontFamily: PhoneTokens.fontFamily,
+      bodyColor: scheme.onSurface,
+      displayColor: scheme.onSurface,
+    ),
+  );
 }

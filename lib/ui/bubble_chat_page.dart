@@ -19,6 +19,7 @@ import 'bubble_details_page.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
 import 'shared_files_page.dart';
+import 'theme_tokens.dart';
 
 class BubbleChatPage extends RearchConsumer {
   const BubbleChatPage({super.key, required this.bubble});
@@ -166,6 +167,7 @@ class BubbleChatPage extends RearchConsumer {
     }
 
     return Scaffold(
+      backgroundColor: phonePaletteOf(context).chatWallpaper,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -238,9 +240,9 @@ class BubbleChatPage extends RearchConsumer {
                             replyTarget: lookupTarget(msg.replyToMessageId),
                             reactions: msg.reactions,
                             onReactionTap: (e) => toggleMyReaction(msg, e),
-                            child: SimpleTextMessage(
+                            child: PhoneTextBubble(
                               message: msg,
-                              index: index,
+                              isSentByMe: isSentByMe,
                             ),
                           ),
                   imageMessageBuilder:

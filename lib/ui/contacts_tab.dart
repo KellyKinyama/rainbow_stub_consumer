@@ -11,6 +11,7 @@ import '../state/capsules/rest_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/models/presence.dart';
 import 'chat_page.dart';
+import 'phone_row_tile.dart';
 
 class ContactsTab extends RearchConsumer {
   const ContactsTab({super.key});
@@ -63,45 +64,27 @@ class ContactsTab extends RearchConsumer {
             ),
           );
         } else {
-          list = ListView.builder(
+          list = ListView.separated(
             itemCount: filtered.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 2),
             itemBuilder: (_, i) {
               final entry = filtered[i];
               final live = entry.peer;
               final livePresence = _presenceFor(live, presence);
-              return ListTile(
-                leading: Stack(
-                  alignment: Alignment.bottomRight,
-                  children: [
-                    CircleAvatar(
-                      child: Text(
-                        live.display.isNotEmpty
-                            ? live.display[0].toUpperCase()
-                            : '?',
-                      ),
-                    ),
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: _presenceColor(
-                          livePresence?.show ?? live.presenceShow,
-                        ),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                    ),
-                  ],
+              final subtitle = livePresence?.status?.isNotEmpty == true
+                  ? livePresence!.status!
+                  : (live.presenceStatus?.isNotEmpty == true
+                      ? live.presenceStatus!
+                      : live.loginEmail);
+              return PhoneRowTile(
+                avatar: PhoneAvatar(
+                  label: live.display,
+                  presenceColor: _presenceColor(
+                    livePresence?.show ?? live.presenceShow,
+                  ),
                 ),
-                title: Text(live.display),
-                subtitle: Text(
-                  livePresence?.status?.isNotEmpty == true
-                      ? livePresence!.status!
-                      : (live.presenceStatus?.isNotEmpty == true
-                            ? live.presenceStatus!
-                            : live.loginEmail),
-                ),
-                trailing: const Icon(Icons.chevron_right),
+                title: live.display,
+                subtitle: subtitle,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => ChatPage(peer: live)),
                 ),

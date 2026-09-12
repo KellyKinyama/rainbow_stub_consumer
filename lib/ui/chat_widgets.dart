@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 
+import 'theme_tokens.dart';
+
 /// Quick-react emoji set shown at the top of the long-press sheet.
 const quickReactEmojis = ['👍', '❤️', '😂', '😮', '🎉', '🔥'];
 
@@ -393,5 +395,88 @@ class LoadOlderChip extends StatelessWidget {
               ),
       ),
     );
+  }
+}
+
+
+class PhoneTextBubble extends StatelessWidget {
+  const PhoneTextBubble({
+    super.key,
+    required this.message,
+    required this.isSentByMe,
+  });
+
+  final TextMessage message;
+  final bool isSentByMe;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = phonePaletteOf(context);
+    final bg = isSentByMe ? palette.ourBubble : palette.theirBubble;
+    final radius = const Radius.circular(PhoneTokens.bubbleRadius);
+    final tail = const Radius.circular(2);
+    return Align(
+      alignment:
+          isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width *
+              PhoneTokens.bubbleMaxWidthFactor,
+        ),
+        child: Container(
+          margin: EdgeInsets.only(
+            top: 4,
+            bottom: 2,
+            left: isSentByMe ? 40 : 8,
+            right: isSentByMe ? 8 : 40,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.only(
+              topLeft: radius,
+              topRight: radius,
+              bottomLeft: isSentByMe ? radius : tail,
+              bottomRight: isSentByMe ? tail : radius,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x1A000000),
+                blurRadius: 2,
+                offset: Offset(1, 1),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                message.text,
+                style: TextStyle(
+                  color: palette.textPrimary,
+                  fontSize: PhoneTokens.titleFontSize,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _formatTime(message.createdAt),
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontSize: PhoneTokens.timeStampFontSize,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _formatTime(DateTime? d) {
+    final t = d ?? DateTime.now();
+    return '${t.hour.toString().padLeft(2, '0')}:'
+        '${t.minute.toString().padLeft(2, '0')}';
   }
 }
