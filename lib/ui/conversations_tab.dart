@@ -5,11 +5,14 @@ import 'package:rearch/rearch.dart';
 import '../rainbow/models.dart';
 import '../state/capsules/conversations_capsule.dart';
 import '../state/capsules/detail_selection_capsule.dart';
+import '../state/capsules/presence_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
+import '../state/models/presence.dart';
 import 'phone_empty.dart';
 import 'phone_row_tile.dart';
 import 'responsive.dart';
+import 'theme_tokens.dart';
 
 /// "Recent" tab — mirrors the RN sample's ``Conversations`` list.
 /// Session-scoped: entries are populated as XMPP 1:1 messages arrive
@@ -24,6 +27,7 @@ class ConversationsTab extends RearchConsumer {
     final conversations = use(conversationsCapsule);
     final unread = use(unreadCapsule);
     final selection = use(detailSelectionCapsule);
+    final presence = use(presenceCapsule);
     if (conversations.isEmpty) {
       return const _EmptyState();
     }
@@ -34,7 +38,10 @@ class ConversationsTab extends RearchConsumer {
         final c = conversations[i];
         final badge = unread.counts[c.peerId] ?? 0;
         return PhoneRowTile(
-          avatar: PhoneAvatar(label: c.peerDisplay),
+          avatar: PhoneAvatar(
+            label: c.peerDisplay,
+            presenceColor: _onlineDot(c.peerId, presence),
+          ),
           title: c.peerDisplay,
           subtitle: _subtitleFor(c),
           trailingText: _timeLabel(c.lastAt),
@@ -43,6 +50,22 @@ class ConversationsTab extends RearchConsumer {
         );
       },
     );
+  }
+
+  /// Green dot when the peer is online, otherwise none (WhatsApp-style —
+  /// only a positive presence is surfaced in the list).
+  static Color? _onlineDot(String peerId, Map<String, Presence> map) {
+    for (final entry in map.entries) {
+      final local = entry.key.contains('@')
+          ? entry.key.substring(0, entry.key.indexOf('@'))
+          : entry.key;
+      if (local != peerId) continue;
+      final show = entry.value.show;
+      return (show == 'online' || show == 'chat')
+          ? PhoneTokens.callActive
+          : null;
+    }
+    return null;
   }
 
   static String _subtitleFor(ConversationSummary c) {
