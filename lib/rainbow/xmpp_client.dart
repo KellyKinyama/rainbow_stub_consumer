@@ -21,6 +21,42 @@ class XmppDisconnected extends XmppEvent {
   final String reason;
 }
 
+/// RFC 6120 §4.9 stream-level error (`<stream:error>`). Fatal — the
+/// stream is closing. [condition] is the defined-condition local name
+/// (e.g. `not-authorized`, `policy-violation`), [text] the optional
+/// human-readable description.
+class XmppStreamError extends XmppEvent {
+  const XmppStreamError({required this.condition, this.text});
+  final String condition;
+  final String? text;
+}
+
+/// RFC 6120 §8.3 stanza-level error — an `iq`/`message`/`presence`
+/// stanza with `type="error"`. Surfaced so callers learn when an
+/// operation failed instead of the error being silently dropped.
+class XmppStanzaError extends XmppEvent {
+  const XmppStanzaError({
+    required this.kind,
+    required this.from,
+    required this.id,
+    required this.condition,
+    this.errorType,
+    this.text,
+  });
+
+  /// 'iq' | 'message' | 'presence'.
+  final String kind;
+  final String from;
+  final String id;
+
+  /// RFC 6120 §8.3.2 error type: auth | cancel | modify | wait.
+  final String? errorType;
+
+  /// Defined-condition local name (e.g. `service-unavailable`).
+  final String condition;
+  final String? text;
+}
+
 class XmppChatMessage extends XmppEvent {
   const XmppChatMessage({
     required this.from,
@@ -561,7 +597,21 @@ class RainbowXmppClient {
       }
       return;
     }
+    // RFC 6120 §4.9 stream error — fatal, not counted by SM.
+    if (el.localName == 'error' &&
+        el.name.namespaceUri == 'http://etherx.jabber.org/streams') {
+      _events.add(_parseStreamError(el));
+      return;
+    }
     if (_smEnabled) _hIn++;
+    // RFC 6120 §8.3 stanza error — surface instead of dropping.
+    if (el.getAttribute('type') == 'error') {
+      final kind = el.localName;
+      if (kind == 'iq' || kind == 'message' || kind == 'presence') {
+        _events.add(_parseStanzaError(kind!, el));
+        return;
+      }
+    }
     switch (el.localName) {
       case 'message':
         _handleMessage(el);
@@ -570,6 +620,44 @@ class RainbowXmppClient {
       case 'iq':
         _handleIq(el);
     }
+  }
+
+  XmppStreamError _parseStreamError(XmlElement el) {
+    var condition = 'undefined-condition';
+    String? text;
+    for (final c in el.childElements) {
+      if (c.localName == 'text') {
+        text = c.innerText;
+      } else {
+        condition = c.localName ?? condition;
+      }
+    }
+    return XmppStreamError(condition: condition, text: text);
+  }
+
+  XmppStanzaError _parseStanzaError(String kind, XmlElement el) {
+    final err = el.getElement('error');
+    var condition = 'undefined-condition';
+    String? text;
+    String? errType;
+    if (err != null) {
+      errType = err.getAttribute('type');
+      for (final c in err.childElements) {
+        if (c.localName == 'text') {
+          text = c.innerText;
+        } else {
+          condition = c.localName ?? condition;
+        }
+      }
+    }
+    return XmppStanzaError(
+      kind: kind,
+      from: el.getAttribute('from') ?? '',
+      id: el.getAttribute('id') ?? '',
+      errorType: errType,
+      condition: condition,
+      text: text,
+    );
   }
 
   void _handleIq(XmlElement el) {
