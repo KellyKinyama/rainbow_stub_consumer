@@ -12,8 +12,8 @@ class PhoneRoundButton extends StatelessWidget {
     required this.onPressed,
     this.tooltip,
     this.color,
-    this.size = 32,
-    this.iconSize = 16,
+    this.size = 40,
+    this.iconSize = 20,
     this.background,
   });
 

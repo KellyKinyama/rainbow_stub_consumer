@@ -217,12 +217,12 @@ class PhoneAvatar extends StatelessWidget {
           ),
           alignment: Alignment.center,
           child: icon != null
-              ? Icon(icon, color: Colors.white, size: 20)
+              ? Icon(icon, color: Colors.white, size: 24)
               : Text(
                   label.isEmpty ? '?' : label[0].toUpperCase(),
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 16,
+                    fontSize: 18,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

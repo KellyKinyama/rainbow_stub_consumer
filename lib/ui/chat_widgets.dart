@@ -459,12 +459,21 @@ class PhoneTextBubble extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                _formatTime(message.createdAt),
-                style: TextStyle(
-                  color: palette.textSecondary,
-                  fontSize: PhoneTokens.timeStampFontSize,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTime(message.createdAt),
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontSize: PhoneTokens.timeStampFontSize,
+                    ),
+                  ),
+                  if (isSentByMe) ...[
+                    const SizedBox(width: 4),
+                    MessageReceipt(message: message),
+                  ],
+                ],
               ),
             ],
           ),
@@ -477,5 +486,34 @@ class PhoneTextBubble extends StatelessWidget {
     final t = d ?? DateTime.now();
     return '${t.hour.toString().padLeft(2, '0')}:'
         '${t.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// WhatsApp-style delivery receipt for the current user's own
+/// messages: pending clock → single check (sent) → grey double check
+/// (delivered) → accent double check (read); red alert on error.
+class MessageReceipt extends StatelessWidget {
+  const MessageReceipt({super.key, required this.message, this.size = 15});
+
+  final Message message;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = phonePaletteOf(context);
+    final (IconData icon, Color color) = switch (message) {
+      _ when message.status == MessageStatus.error => (
+        Icons.error_outline,
+        PhoneTokens.danger,
+      ),
+      _ when message.seenAt != null => (Icons.done_all, PhoneTokens.accent),
+      _ when message.deliveredAt != null => (
+        Icons.done_all,
+        palette.textSecondary,
+      ),
+      _ when message.sentAt != null => (Icons.check, palette.textSecondary),
+      _ => (Icons.access_time, palette.textSecondary),
+    };
+    return Icon(icon, size: size, color: color);
   }
 }

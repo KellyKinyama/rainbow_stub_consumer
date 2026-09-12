@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:rearch/rearch.dart';
 
 import '../state/capsules/rest_capsule.dart';
+import 'chat_widgets.dart';
 
 /// Bottom-sheet picker: "Camera" (mobile/web), "Image" (gallery), "File".
 /// Returns picked bytes + name + mime, or `null` if the user dismissed.
@@ -165,9 +166,22 @@ class InlineImageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: isSentByMe ? Alignment.centerRight : Alignment.centerLeft,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: AuthedImage(url: message.source, width: 240, height: 240),
+      child: Column(
+        crossAxisAlignment: isSentByMe
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: AuthedImage(url: message.source, width: 240, height: 240),
+          ),
+          if (isSentByMe)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 4),
+              child: MessageReceipt(message: message),
+            ),
+        ],
       ),
     );
   }

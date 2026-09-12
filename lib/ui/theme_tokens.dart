@@ -44,8 +44,8 @@ class PhoneTokens {
 
   // Spacing / sizing.
   static const double rowHeight = 48;
-  static const double avatarSize = 36;
-  static const double avatarSmall = 18;
+  static const double avatarSize = 42;
+  static const double avatarSmall = 20;
   static const double bubbleRadius = 10;
   static const double bubbleMaxWidthFactor = 0.85;
   static const double rowPadding = 8;
