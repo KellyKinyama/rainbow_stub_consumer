@@ -51,18 +51,23 @@ void main() {
     await expectLater(fut, throwsA(isA<TimeoutException>()));
   });
 
-  test('a result iq with a non-matching id does not complete the future', () async {
-    final c = _makeClient();
-    var settled = false;
-    final fut = c.sendIq(type: 'get', id: 'q4');
-    unawaited(fut.then((_) => settled = true, onError: (_) => settled = true));
+  test(
+    'a result iq with a non-matching id does not complete the future',
+    () async {
+      final c = _makeClient();
+      var settled = false;
+      final fut = c.sendIq(type: 'get', id: 'q4');
+      unawaited(
+        fut.then((_) => settled = true, onError: (_) => settled = true),
+      );
 
-    c.debugRouteStanza(_parse('<iq type="result" id="someone-else"/>'));
-    await Future<void>.delayed(Duration.zero);
-    expect(settled, isFalse);
+      c.debugRouteStanza(_parse('<iq type="result" id="someone-else"/>'));
+      await Future<void>.delayed(Duration.zero);
+      expect(settled, isFalse);
 
-    // Settle it so the pending timer doesn't linger past the test.
-    c.debugRouteStanza(_parse('<iq type="result" id="q4"/>'));
-    await fut;
-  });
+      // Settle it so the pending timer doesn't linger past the test.
+      c.debugRouteStanza(_parse('<iq type="result" id="q4"/>'));
+      await fut;
+    },
+  );
 }
