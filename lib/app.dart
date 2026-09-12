@@ -31,12 +31,22 @@ class RainbowConsumerApp extends StatelessWidget {
       home: const _AuthGate(),
       // Stacks the incoming-call banner above every route so it stays
       // visible inside chat pages, bubble pages, etc.
-      builder: (context, child) => Stack(
-        children: [
-          if (child != null) Positioned.fill(child: child),
-          const Align(alignment: Alignment.topCenter, child: CallOverlay()),
-        ],
-      ),
+      builder: (context, child) {
+        // Bump the text scale floor to 1.15 for WhatsApp-like legibility
+        // while still honouring a larger OS/accessibility setting.
+        final mq = MediaQuery.of(context);
+        final current = mq.textScaler.scale(1);
+        final effective = current < 1.15 ? 1.15 : current;
+        return MediaQuery(
+          data: mq.copyWith(textScaler: TextScaler.linear(effective)),
+          child: Stack(
+            children: [
+              if (child != null) Positioned.fill(child: child),
+              const Align(alignment: Alignment.topCenter, child: CallOverlay()),
+            ],
+          ),
+        );
+      },
     );
   }
 }
