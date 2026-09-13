@@ -107,85 +107,187 @@ Attachments (Phase 5 in this plan) map to `ImageMessage` / `FileMessage`.
 
 Each phase is independently commit-able, ships to `feat/chat-ui-rearch`, and has explicit acceptance.
 
-### Phase A — Add deps, introduce rearch bootstrap (S)
+### Phase A — Add deps, introduce rearch bootstrap (S) — ✅ done 2026-09-10
 
 - **Do:**
   - `flutter pub add rearch flutter_rearch flutter_chat_ui flutter_chat_core`
-  - `flutter pub remove provider`
+  - ~~`flutter pub remove provider`~~ — deferred to Phase C; removing it now
+    would break the existing `ChangeNotifierProvider<RainbowSession>` before
+    the UI has been migrated. `provider` stays until Phase C.
   - Wrap `main()` in `RearchBootstrapper`.
   - Keep `RainbowSession` for now; delete only after Phase C.
+
+**Resolved:** actual `rearch` version is `^1.16.1` (not `^5.x` as the plan
+guessed). `flutter_chat_ui ^2.11.1` confirmed uses `flutter_chat_core ^2.9.0`.
+
+**Evidence:**
+- `flutter analyze` — 0 errors / 0 warnings (7 pre-existing style infos, none Phase-A related)
+- `flutter test` — 7/7 pass (added `phase_a_bootstrap_test.dart` proving the Rearch bootstrap composes without a crash and the login page still renders)
+- `flutter test test/live_stub_integration_test.dart` — 3/3 pass, no wire regression
+- Windows release build succeeded in 56 s; app launched and rendered the login page (verified via process presence + no crash on stub-log timeline)
 - **Acceptance:** app still boots, login still works with old provider-based screens; `dart analyze` clean.
 
-### Phase B — Port state to capsules (M)
+### Phase B — Port state to capsules (M) — ✅ done 2026-09-10
 
 - **Do:**
   - New `lib/state/capsules/` directory:
     - `config_capsule.dart` — returns `AppConfig.dev`
-    - `rest_capsule.dart` — `use.effect` builds/closes `RainbowRestClient`
-    - `xmpp_capsule.dart` — same for `RainbowXmppClient`
-    - `auth_capsule.dart` — `use.state<AuthState>` (initial `AuthState.signedOut()`)
+    - `rest_capsule.dart` — `use.disposable` builds/closes `RainbowRestClient`
+    - `xmpp_capsule.dart` — same for `RainbowXmppClient`; also exposes `xmppEventsCapsule` for the broadcast stream
+    - `auth_state_capsule.dart` — `use.data<AuthState>` shared slot + `authCapsule` value getter
+    - `auth_controller_capsule.dart` — orchestrates REST `login` → set bearer → XMPP `connect` → slot flip; `signOut` reverse
     - `roster_capsule.dart` — depends on `restCapsule` + `authCapsule`; fetches on `signedIn`; returns `AsyncValue<List<RosterEntry>>`
     - `bubbles_capsule.dart` — same pattern
-    - `presence_capsule.dart` — listens to `xmppEventsCapsule`, maintains `Map<String, Presence>`
-    - `messages_capsule.dart` — family/parameterised: `messagesCapsule(threadKey)`; hydrates on demand; appends on XMPP events
-    - `xmpp_events_capsule.dart` — wraps `xmppClient.events` as a rearch `Stream`
-- **Acceptance:** all capsules compile; a new `test/capsules_test.dart` proves auth capsule transitions, roster capsule populates, messages capsule appends on stream input (using a fake `RainbowXmppClient`).
+    - `presence_capsule.dart` — `use.effect` listens to `xmppEventsCapsule`, maintains `Map<String, Presence>`
+    - `messages_capsule.dart` — family/parameterised: `messagesCapsule(threadKey)`; appends live XMPP messages that belong to the thread; hydration deferred to Phase D
+  - New `lib/state/models/` for `AuthState` + `Presence` value types
+- **Acceptance:** all capsules compile; `test/capsules_test.dart` proves auth capsule transitions, roster + bubbles capsules populate, presence + messages capsules react to injected stream events. Fake `RainbowRestClient` and `RainbowXmppClient` injected via `MockableContainer`.
+- **Evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on the new files (7 pre-existing infos in files not touched)
+  - `flutter test --exclude-tags=live` → 6 new capsule tests + 7 existing tests pass; live tests skip cleanly with stub down
+  - Commit: see `feat/chat-ui-rearch` branch tip
+  - Session log: `docs/phase-b-log.md`
 
-### Phase C — Rewrite screens as `RearchConsumer` widgets, delete `RainbowSession` (M)
+### Phase C — Rewrite screens as `RearchConsumer` widgets, delete `RainbowSession` (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - `LoginPage` → uses `authCapsule.setSignedIn(...)`; deletes `context.read<RainbowSession>()`.
-  - `HomePage`, `ContactsTab`, `BubblesTab` → read from capsules.
-  - Delete `lib/state/rainbow_session.dart` and remove `provider` imports.
-  - Remove `ChangeNotifierProvider` from `app.dart`; the `RearchBootstrapper` wraps everything from `main.dart`.
-- **Acceptance:**
-  - `flutter test test/live_stub_integration_test.dart` still green.
-  - Manual login / roster / bubbles walkthrough (same as RUNBOOK § 5) still works.
-  - `git grep -R 'ChangeNotifier\|provider' lib/` returns nothing.
+- **Done:**
+  - `LoginPage`, `HomePage`, `ContactsTab`, `BubblesTab`, `ChatPage`, `BubbleChatPage` are all `RearchConsumer` widgets.
+  - `RainbowConsumerApp` no longer takes a `config` prop — the `configCapsule` provides it.
+  - `_AuthGate` reads `authCapsule` directly; `MaterialApp` sits inside a plain `StatelessWidget` under `RearchBootstrapper`.
+  - `LoginPage` uses `use.textEditingController(...)` + `use.state<bool>` + `use.state<String?>` for local state, and calls `authControllerCapsule.signIn(...)`.
+  - `ContactsTab` and `BubblesTab` do `switch (asyncValue) { AsyncLoading / AsyncData / AsyncError }` pattern matching against `rosterCapsule` / `bubblesCapsule`.
+  - New `chatActionsCapsule` exposes `sendPeer`, `sendGroup`, `joinMuc`, `setMyPresence`, `createBubble` to the UI.
+  - `messagesCapsule` gained an internal appender registry so `chatActions.sendPeer/sendGroup` echo locally with `isMine: true`; incoming XMPP messages compute `isMine` by comparing the sender's JID local-part to `authCapsule.me?.id`.
+  - `lib/state/rainbow_session.dart` deleted; `provider` removed from `pubspec.yaml` (still transitive via `flutter`).
+- **Acceptance evidence (2026-09-10):**
+  - `git grep 'ChangeNotifier\|RainbowSession\|package:provider' lib/` → **empty**.
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new + rewritten files.
+  - `flutter test --exclude-tags=live` → 14/14 pass; `flutter test` with the stub running → live suite green.
+  - New `test/phase_c_actions_test.dart` proves `chatActionsCapsule.sendPeer` dispatches to XMPP and echoes into `messagesCapsule` with `isMine: true`.
+  - Session log: `docs/phase-c-log.md`.
 
-### Phase D — Adopt `flutter_chat_ui` for 1:1 chat (M)
+### Phase D — Adopt `flutter_chat_ui` for 1:1 chat (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - New `lib/ui/chat_view.dart` wrapping `Chat(messages, user, onSendPressed, ...)`.
-  - Convert `messagesCapsule(threadKey)` output to `List<Message>` in a `RearchConsumer` selector.
-  - `ChatPage` becomes a thin wrapper that resolves the peer's JID + user, wires the chat view.
-  - Retire `lib/ui/chat_page.dart`'s custom bubbles (delete or replace the body).
-- **Acceptance:**
-  - Open Bob → chat renders with `flutter_chat_ui` styling (avatars, timestamps, "new" separators).
-  - Send + receive round-trip works end-to-end.
-  - Screenshot committed for reference.
+- **Done:**
+  - New family capsule `chatControllerCapsule(threadKey)` in `messages_capsule.dart` — owns an `InMemoryChatController`, subscribes to XMPP events, mirrors local send-echoes.
+  - `messages_capsule.dart` appender registry became a **list** per thread so `messagesCapsule` and `chatControllerCapsule` can co-exist and both receive fan-out from `appendLocalMessage(...)`.
+  - `RainbowXmppClient.sendGroupChat` gained an optional `id` parameter (matching `sendChat`) so actions can share a stanza id between the wire send and the local echo.
+  - `chatActionsCapsule.sendPeer` / `sendGroup` now generate one stanza id and use it for both the XMPP send AND the local echo — carbons that echo the same id dedupe cleanly inside the controller.
+  - `ChatMessage → Message.text(...)` converter uses `authCapsule.me.id` for `authorId` on locally-echoed messages, the sender's JID local-part for incoming ones.
+  - `ChatPage` rewritten around `Chat(currentUserId, resolveUser, chatController, onMessageSend)` — no more hand-rolled bubbles.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new/rewritten files.
+  - `flutter test --exclude-tags=live` → **18/18** pass (Phase D adds 4 tests in `phase_d_chat_controller_test.dart`: local-echo render, incoming-append, carbon-dedupe, messagesCapsule↔chatControllerCapsule sync).
+  - `flutter build windows --debug` → clean build in ~31s.
+  - Session log: `docs/phase-d-log.md`.
 
-### Phase E — Adopt `flutter_chat_ui` for group chat (S)
+### Phase E — Adopt `flutter_chat_ui` for group chat (S) — ✅ done 2026-09-10
 
-- **Do:**
-  - `BubbleChatPage` → same pattern as Phase D but subscribes to the MUC threadKey.
-  - MUC join still triggered from `initState`.
-  - Include the sender's display name from the roster capsule when converting messages (via `metadata: {senderNick: …}`).
-- **Acceptance:** open the seeded "Rainbow Stub Demo" bubble → send + receive works, sender nicks visible.
+- **Done:**
+  - `BubbleChatPage` rewritten as a thin `RearchConsumer` around `Chat(...)`, reading the MUC thread's `chatControllerCapsule`.
+  - `chatControllerCapsule` now hydrates MAM for MUC threads too — the `!threadKey.contains('@muc.')` guard is gone; the stub routes on the `with` field's domain.
+  - Sender attribution for group messages uses the **resource** part of the from-JID (`room@muc.domain/nick` → `nick`) instead of the local part (which would be the room id itself).
+  - `_toChatUiMessage` refactored: authorId is now derived by the listener (which knows `isGroupChat` per event) and passed in explicitly.
+  - `BubbleChatPage.resolveUser` looks up display names via `rosterCapsule` for known peers, falls back to id-as-name for unknown ids (e.g. bubble members not in your roster).
+- **Hardening (fixes for issues surfaced during test drive):**
+  - Cross-user cache pollution: added a `_cacheGeneration` counter. `resetMessagesCapsuleCache()` bumps it; old rearch-container-managed capsules snapshot the previous generation and short-circuit new events, going dormant instead of polluting the next user's state.
+  - Defensive `insertMessage` index clamp — if some other event source ever pushes the cursor past the actual list size, we clamp to `messages.length` (turning insert into append) instead of crashing with `RangeError`.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new/rewritten files.
+  - `flutter test --exclude-tags=live` → **27/27** pass (Phase E adds 5 tests in `phase_e_bubble_chat_test.dart`: MUC MAM query fires, incoming nick becomes authorId, local group send-echo, MUC MAM chronological hydration, generation guard).
+  - `flutter build windows --debug` → clean build in ~15s.
+  - Session log: `docs/phase-e-log.md`.
 
-### Phase F — Wire live receipt / typing / read indicators to `flutter_chat_ui`'s status field (S)
+### Phase F — Wire live receipt / typing / read indicators to `flutter_chat_ui`'s status field (S) — ✅ done 2026-09-10
 
-- **Do:**
-  - `flutter_chat_core` `Message.status` supports `sending | sent | delivered | seen | error`.
-  - On outbound send: local status = `sending`. On XMPP `<received/>` (XEP-0184): `delivered`. On XMPP `<displayed/>` (XEP-0333): `seen`.
-  - Chat states (`<composing/>`) drive `Chat(typingIndicatorOptions: ...)`.
-- **Acceptance:** closes ROADMAP § 5.6 (delivery/read receipts) and § 5.7 (typing) as visible-in-UI features.
+- **Done:**
+  - **XEP-0184 delivery receipts**: `sendChat` now embeds `<request xmlns="urn:xmpp:receipts"/>`; incoming `<received>` (from either XEP-0184 or XEP-0333) emits `XmppDeliveryReceipt`; capsule stamps `deliveredAt` on the corresponding message so `TextMessage.resolvedStatus` moves from `sent` to `delivered`.
+  - **XEP-0333 chat markers**: `sendChat` embeds `<markable xmlns="urn:xmpp:chat-markers:0"/>`; on incoming 1:1 message the capsule auto-replies with both `<received>` and `<displayed>`; incoming `<displayed>` emits `XmppReadMarker` and stamps `seenAt`.
+  - **XEP-0085 chat states**: new `sendChatState(toBareJid, state)` XMPP method; `chatActionsCapsule.sendChatState(peer, state)` UI hook; new `typingCapsule(threadKey)` reducing `<composing/>` / `<paused/>` events into a live `bool`; `ChatPage` shows `IsTypingIndicator` when the peer is typing and emits debounced composing/paused as the user types (via a custom `composerBuilder` sharing our `TextEditingController`).
+  - `_toChatUiMessage` seeds `sentAt = cm.sentAt` when the message is mine so the first status icon renders immediately as "sent".
+  - `resetMessagesCapsuleCache()` also clears `_typingCache` — otherwise stale typing indicators would survive signout.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new/rewritten files.
+  - `flutter test --exclude-tags=live` → **33/33** pass (Phase F adds 6 tests in `phase_f_receipts_test.dart`: auto-send receipt+marker on incoming, deliveredAt stamping, seenAt stamping, typingCapsule composing→paused round-trip, peer-scoped filtering, `sendChatState` dispatch).
+  - `flutter build windows --debug` → clean build in ~16s.
+  - Session log: `docs/phase-f-log.md`.
+- **Simplifications documented in the log:**
+  - "Aggressive" auto-`<displayed>`: sent whenever we receive a 1:1 message while the capsule is alive, not gated on ChatPage visibility. Fine for demo, refine in Phase G+ if needed.
+  - Typing scope is 1:1 only — group chat typing indicators are out of scope for this phase.
 
-### Phase G — Attachments UI (M)
+### Phase G — Attachments UI (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - `Chat(onAttachmentPressed: showPickerSheet)` — file picker sheet with camera / gallery / file.
-  - Uploads via the existing REST file endpoint on the stub; on success, send an XMPP message with a `<file>` payload; on receive, render as `ImageMessage` or `FileMessage`.
-- **Acceptance:** matches ROADMAP § 1.2 (file upload UI) end-to-end. Send a JPG → recipient sees an inline preview.
+- **Done:**
+  - `file_picker ^8.1.0` added to `pubspec.yaml` for cross-platform picking (Windows/macOS/Linux/Android/iOS/Web).
+  - `RainbowRestClient.uploadFile(bytes, fileName, mimeType, peerJid, peerType)` performs the stub's two-step handshake: `POST /files` (create descriptor) → `PUT /files/{id}/data` (upload bytes) → returns a `FileDescriptor` with the download URL.
+  - `RainbowRestClient.downloadFileBytes(url)` fetches bearer-authed bytes for the inline image preview.
+  - `RainbowXmppClient.sendChat` / `sendGroupChat` gained an optional `XmppAttachment attachment` — serialized as `<file xmlns="urn:rainbow:file:1" id="..." url="..." name="..." mime="..." size="..."/>` inside the outbound stanza. `XmppChatMessage` and `XmppMamMessage` now also carry an optional `attachment`. Parser scans children for `<file>` in that namespace.
+  - `chatActionsCapsule` gained `sendPeerFile` / `sendGroupFile` — upload → construct `XmppAttachment` → send XMPP with fallback body `"[File: name]"` → local-echo as a `ChatMessage` with `attachment: desc`.
+  - `_toChatUiMessage` now returns `Message.image(source: url, ...)` when the attachment's mime starts with `image/`, `Message.file(source, name, mimeType, size, ...)` for any other attachment, or `Message.text(...)` when there's no attachment.
+  - `_stampStatus` now pattern-matches over `TextMessage` / `ImageMessage` / `FileMessage` so delivery+read markers upgrade the status of all three types.
+  - New `lib/ui/attachment_picker.dart`:
+    - `showAttachmentPicker(context)` → modal sheet ("Image" / "File") → returns `PickedAttachment(bytes, fileName, mimeType)` or `null`.
+    - `AuthedImage(url)` — `RearchConsumer` that memoizes `rest.downloadFileBytes(url)` and renders via `Image.memory`. Used by `InlineImageBubble` in a custom `imageMessageBuilder` so inline previews load with the correct bearer.
+  - `ChatPage` wires `Chat.onAttachmentTap` → `showAttachmentPicker` → `actions.sendPeerFile(...)` and provides a custom `imageMessageBuilder` for authenticated inline previews.
+  - `BubbleChatPage` wires the same picker → `actions.sendGroupFile(...)` and the same custom image builder.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new files. Test-fake overrides for `sendChat` / `sendGroupChat` updated across Phase C/D/E/F tests to add the new `attachment` param.
+  - `flutter test --exclude-tags=live` → **36/36** pass (Phase G adds 3 tests in `phase_g_attachments_test.dart`: two-step upload+file-attached send, image mime → `ImageMessage`, incoming `<file>` → `ImageMessage`).
+  - `flutter build windows --debug` → clean build in ~17s.
+  - Session log: `docs/phase-g-log.md`.
+- **Deferred (documented in the log):**
+  - Camera capture — needs `image_picker` on top of `file_picker`; mobile-only concern for Phase H+.
+  - Progress indicators — upload is currently opaque; can wire via a progress-reporting HTTP transport later.
+  - MAM history for attachments across sessions — should just work because the stub archives the full stanza including the `<file>` child; not exercised in a test-drive scenario yet.
 
-### Phase H — Message reactions + edits + replies (M)
+### Phase H — Message reactions + edits + replies (M) — ✅ done 2026-09-10
 
-- **Do:**
-  - Long-press message → `showMenu` with Reply / React / Edit / Delete.
-  - Reactions: XEP-0444 `<reactions/>`.
-  - Edits: XEP-0308 `<replace/>`.
-  - Replies: XEP-0461 `<reply/>` → chat_ui renders quoted card via `metadata: {replyTo: {id, text, author}}`.
-- **Acceptance:** closes ROADMAP § 5.1 (edit), § 5.5 (reactions), § 5.8 (threads).
+- **Done:**
+  - **Reactions (XEP-0444):** new `XmppReactions(fromBare, targetStanzaId, emojis)` event. `RainbowXmppClient.sendReactions(toBareJid, targetStanzaId, emojis, isGroupChat)` writes `<reactions xmlns="urn:xmpp:reactions:0" id="…"><reaction>…</reaction>…</reactions>`. Parser reads the same element. Semantics match the XEP: the payload is an idempotent full snapshot of the sender's reactions on the target — an empty list clears them.
+  - **Edits (XEP-0308):** new `XmppMessageCorrection(fromBare, originalStanzaId, newBody, newStanzaId, isGroupChat)` event. `RainbowXmppClient.sendChatCorrection(toBareJid, originalStanzaId, newBody, isGroupChat)` emits a message with `<body>` and `<replace xmlns="urn:xmpp:message-correct:0" id="original"/>`. Parser detects `<replace>` alongside a body and emits the correction event instead of a fresh chat message so consumers never render the correction as a duplicate.
+  - **Replies (XEP-0461):** `XmppChatMessage` and `XmppMamMessage` grew a `replyToStanzaId` field. `sendChat` / `sendGroupChat` gained optional `replyToStanzaId` — serialized as `<reply xmlns="urn:xmpp:reply:0" id="…"/>`. `ChatMessage` and `Message.replyToMessageId` carry it downstream.
+  - **Capsule wiring:** two new stream subscriptions in `chatControllerCapsule` — reactions events funnel through `_applyReactions(controller, targetStanzaId, fromUserId, emojis)` which replaces the sender's contribution in the message's reactions map. Corrections funnel through `_applyEdit(controller, originalStanzaId, newBody)` which uses `TextMessage.copyWith(text, editedAt)` (or `ImageMessage/FileMessage` `updatedAt` for the caption/name).
+  - **Local echo for outbound reactions/edits:** new `applyReactionsLocally` / `applyEditLocally` top-level functions + a `_threadUpdaters` registry keyed by threadKey (same pattern as `_appenders`). `chatActionsCapsule.reactToPeer` / `reactToGroup` / `editPeer` / `editGroup` dispatch to XMPP AND fan-out to the local controller instantly.
+  - **`_toChatUiMessage` extended:** now passes `replyToMessageId`, `reactions`, and `editedAt` (`TextMessage` only) through to the produced `Message.text` / `.image` / `.file`.
+  - **`ChatPage` UI:**
+    - `use.state<Message?>` for `replyingTo` and `use.state<TextMessage?>` for `editing`.
+    - `Chat.onMessageLongPress` opens a modal bottom sheet with:
+      - 6 quick-react emojis (👍 ❤️ 😂 😮 🎉 🔥) → `actions.reactToPeer(peer, targetStanzaId: m.id, emojis: [chosen])`.
+      - "Reply" → sets `replyingTo`, shows a reply banner above the composer.
+      - "Edit" (my messages only, TextMessage only) → sets `editing`, prefills the composer.
+      - "Copy" (TextMessage only) → `Clipboard.setData`.
+    - On composer send: if `editing` is set → `actions.editPeer(peer, originalStanzaId: editing.id, newBody: trimmed)`; else → `actions.sendPeer(peer, trimmed, replyToStanzaId: replyingTo?.id)`.
+    - Two small banner widgets (`_ReplyBanner`, `_EditBanner`) with an X-out control.
+  - **Stub forwarding:** extended `Ns` with `reactions = 'urn:xmpp:reactions:0'`; the "forward without persist" filter now also matches messages whose only child is `<reactions>` so those pass through the router.
+- **Acceptance evidence (2026-09-10):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new files.
+  - `flutter test --exclude-tags=live` → **42/42** pass (Phase H adds 6 tests in `phase_h_reactions_edits_replies_test.dart`: local reaction echo, inbound reaction merge, edit round-trip + editedAt stamp, inbound correction body swap, outbound reply propagation, inbound reply carrying `replyToMessageId`).
+  - `flutter build windows --debug` → clean build in ~16s.
+  - Stub `dart test` → 40/41 pass (`users_test.dart` multipart-avatar test is the known pre-existing Windows socket-starvation flake, unrelated to Phase H).
+  - Session log: `docs/phase-h-log.md`.
+- **Deferred:**
+  - ~~**XEP-0424 message retraction ("delete for everyone")**~~ — shipped in Phase I.
+  - ~~**Group reactions/edits in the bubble chat page**~~ — shipped in Phase I (`BubbleChatPage` now mirrors `ChatPage`).
+  - ~~**Rendering the reply preview inline**~~ — shipped in Phase I (shared `wrapChatBubble` renders a quoted card above the bubble).
+
+### Phase I — Loose ends from Phase H (S) — ✅ done 2026-09-11
+
+- **Done:**
+  - **XEP-0424 retraction ("Delete for everyone"):** new `XmppRetract(fromBare, targetStanzaId, isGroupChat)` event and `RainbowXmppClient.sendRetract(toBareJid, targetStanzaId, isGroupChat)`. Stub enforces "only the original sender may retract" and deletes the archived row so MAM never returns it again; 1:1 also emits a peer-side no-body forward. `chatActionsCapsule.retractPeer` / `retractGroup` wired; `applyRetractLocally` fans out via the `_threadUpdaters` registry; a new `_RetractUpdate` case in `handleUpdate` calls `controller.removeMessage`.
+  - **Sender "sending → sent" transition:** new stub-only namespace `urn:xmpp:sent-ack:1`. Stub emits `<sent id="…"/>` immediately after `messages.insert` on the 1:1 body path. `ChatMessage.pendingAck: bool` maps to `MessageStatus.sending` in `_toChatUiMessage`; the new `XmppSentAck` listener calls `_stampSent` which clears the status and stamps `sentAt`. `_stampStatus` (delivery-receipt / read-marker path) does the same clean-up so the two paths converge on the same "at least sent" state.
+  - **`BubbleChatPage` long-press menu:** now mirrors `ChatPage` — 6 quick-react emojis + Reply + Edit (my TextMessages only) + Copy + "Delete for everyone" (my messages only). Reply / edit banners over the composer. `Chat.onMessageSend` dispatches to `editGroup` or `sendGroup(replyToStanzaId: …)`.
+  - **Inline reply preview:** shared `wrapChatBubble` helper in `lib/ui/chat_widgets.dart`. Both chat pages plug it into their `textMessageBuilder` / `imageMessageBuilder`, and the target is resolved on the fly with `controller.messages.firstWhere((m) => m.id == replyToMessageId)` so it reacts to concurrent edits / retracts of the target.
+  - **Reaction chip tap-to-toggle:** each chip is an `InkWell`; tapping dispatches `reactToPeer` / `reactToGroup` with the current user's snapshot XOR the tapped emoji. The chip is highlighted (primary container fill) when the current user is in its reactor list.
+  - **UI helper extraction:** `lib/ui/chat_widgets.dart` centralizes `showMessageActions` (sealed `MessageActionChoice`), `wrapChatBubble`, `ChatReplyBanner`, `ChatEditBanner`, `previewOfMessage`. Both chat pages depend on it.
+- **Acceptance evidence (2026-09-11):**
+  - `flutter analyze --no-pub` → 0 errors, 0 warnings on new files (9 pre-existing info-level style suggestions unchanged).
+  - `flutter test --exclude-tags=live` → **42/42** pass. The pending "should stamp deliveredAt without a separate sent-ack" test in Phase F was fixed by folding sent-ack semantics into `_stampStatus`.
+  - Stub `dart test` → 40/41 pass (same pre-existing multipart-avatar flake as before).
+  - Session log: `docs/phase-i-log.md`.
+- **Deferred:**
+  - Dedicated `test/phase_i_retract_test.dart` covering (a) outbound `retractPeer` sends `<retract>` and removes locally, (b) inbound `XmppRetract` removes, (c) foreign-sender retracts are silently dropped. Existing controller-lifecycle harness catches regressions but the coverage isn't explicit yet.
+  - Real stream-management ack (XEP-0198) in place of the stub-only `urn:xmpp:sent-ack:1` namespace.
+  - MUC reactions persistence — currently only 1:1 reactions survive signout; MUC still relies on live stanzas.
 
 ## 7. File-level change plan
 

@@ -1,97 +1,158 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_rearch/flutter_rearch.dart';
+import 'package:rearch/rearch.dart';
 
-import '../state/rainbow_session.dart';
+import '../state/capsules/auth_controller_capsule.dart';
+import '../state/capsules/config_capsule.dart';
+import 'forgot_password_page.dart';
+import 'register_page.dart';
+import 'theme_tokens.dart';
 
-class LoginPage extends StatefulWidget {
+class LoginPage extends RearchConsumer {
   const LoginPage({super.key});
+
   @override
-  State<LoginPage> createState() => _LoginPageState();
-}
+  Widget build(BuildContext context, WidgetHandle use) {
+    final auth = use(authControllerCapsule);
+    final config = use(configCapsule);
+    final email = use.textEditingController(
+      initialText: 'alice@rainbow-stub.local',
+    );
+    final password = use.textEditingController(initialText: 'password');
+    final (busy, setBusy) = use.state<bool>(false);
+    final (error, setError) = use.state<String?>(null);
 
-class _LoginPageState extends State<LoginPage> {
-  final _email = TextEditingController(text: 'alice@rainbow-stub.local');
-  final _password = TextEditingController(text: 'password');
-  bool _busy = false;
-  String? _error;
-
-  Future<void> _submit() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await context.read<RainbowSession>().signIn(
-        _email.text.trim(),
-        _password.text,
-      );
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
+    Future<void> submit() async {
+      setBusy(true);
+      setError(null);
+      try {
+        await auth.signIn(email.text.trim(), password.text);
+      } catch (e) {
+        setError(e.toString());
+      } finally {
+        setBusy(false);
+      }
     }
-  }
 
-  @override
-  Widget build(BuildContext context) {
     return Scaffold(
       body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 380),
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const FlutterLogo(size: 80),
-                const SizedBox(height: 24),
-                Text(
-                  'Rainbow Stub Consumer',
-                  style: Theme.of(context).textTheme.headlineSmall,
+        child: SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: phonePaletteOf(context).panelBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: phonePaletteOf(context).divider),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x1A000000),
+                      blurRadius: 20,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.email),
-                  ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: const BoxDecoration(
+                        color: PhoneTokens.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.phone_in_talk,
+                        color: Colors.white,
+                        size: 34,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Rainbow Stub Consumer',
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 24),
+                    TextField(
+                      controller: email,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: const InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: password,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: Icon(Icons.lock),
+                      ),
+                      onSubmitted: (_) => submit(),
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        error,
+                        style: const TextStyle(color: PhoneTokens.danger),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: busy ? null : submit,
+                        child: busy
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Sign in'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      alignment: WrapAlignment.spaceBetween,
+                      spacing: 4,
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const RegisterPage(),
+                            ),
+                          ),
+                          child: const Text('Create account'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const ForgotPasswordPage(),
+                            ),
+                          ),
+                          child: const Text('Forgot password?'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Points at ${config.baseUrl}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: phonePaletteOf(context).textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: Icon(Icons.lock),
-                  ),
-                  onSubmitted: (_) => _submit(),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
-                ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _busy ? null : _submit,
-                    child: _busy
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Sign in'),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Points at ${context.read<RainbowSession>().config.baseUrl}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+              ),
             ),
           ),
         ),

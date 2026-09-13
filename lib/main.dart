@@ -1,9 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_rearch/flutter_rearch.dart';
 
 import 'app.dart';
-import 'config.dart';
 
 void main() {
-  runApp(RainbowConsumerApp(config: AppConfig.dev));
+  runApp(const RearchBootstrapper(child: RainbowConsumerApp()));
 }
-
