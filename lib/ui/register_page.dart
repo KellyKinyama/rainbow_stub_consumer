@@ -4,12 +4,10 @@ import 'package:flutter_rearch/flutter_rearch.dart';
 import '../state/capsules/auth_controller_capsule.dart';
 import '../state/capsules/rest_capsule.dart';
 
-/// Multi-step self-registration flow:
-/// 1. Enter email → server emails a confirmation token (stub returns
-///    it in the response body under `devToken` so demos can skip a
-///    real mailbox).
-/// 2. Enter the token + a password (+ optional first/last name) →
-///    server creates the account, we auto-sign-in and return.
+/// Single-step self-registration: create an (unverified) account with
+/// email + password (+ optional name), then auto-sign-in. Email
+/// verification is nudged afterwards via an in-app banner — the account
+/// works immediately in the meantime.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -19,19 +17,15 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _email = TextEditingController();
-  final _token = TextEditingController();
   final _password = TextEditingController();
   final _first = TextEditingController();
   final _last = TextEditingController();
-  int _step = 0;
-  String? _devToken;
   String? _error;
   bool _busy = false;
 
   @override
   void dispose() {
     _email.dispose();
-    _token.dispose();
     _password.dispose();
     _first.dispose();
     _last.dispose();
@@ -45,42 +39,37 @@ class _RegisterPageState extends State<RegisterPage> {
         final rest = use(restCapsule);
         final auth = use(authControllerCapsule);
 
-        Future<void> submitEmail() async {
-          setState(() {
-            _error = null;
-            _busy = true;
-          });
-          try {
-            final token = await rest.selfRegisterSendEmail(_email.text.trim());
-            if (!mounted) return;
-            setState(() {
-              _devToken = token;
-              _token.text = token;
-              _step = 1;
-            });
-          } on Object catch (e) {
-            if (!mounted) return;
-            setState(() => _error = e.toString());
-          } finally {
-            if (mounted) setState(() => _busy = false);
+        Future<void> submit() async {
+          final email = _email.text.trim();
+          if (email.isEmpty || _password.text.isEmpty) {
+            setState(() => _error = 'Email and password are required');
+            return;
           }
-        }
-
-        Future<void> submitProfile() async {
           setState(() {
             _error = null;
             _busy = true;
           });
           try {
-            await rest.selfRegister(
-              token: _token.text.trim(),
+            final res = await rest.register(
+              email: email,
               password: _password.text,
               firstName: _first.text.trim(),
               lastName: _last.text.trim(),
             );
-            await auth.signIn(_email.text.trim(), _password.text);
+            await auth.signIn(email, _password.text);
             if (!mounted) return;
             Navigator.of(context).pop();
+            final code = res.devToken;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  code == null
+                      ? 'Account created — check your email to verify.'
+                      : 'Account created — verify your email (dev code: $code).',
+                ),
+                duration: const Duration(seconds: 6),
+              ),
+            );
           } on Object catch (e) {
             if (!mounted) return;
             setState(() => _error = e.toString());
@@ -100,72 +89,44 @@ class _RegisterPageState extends State<RegisterPage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_step == 0) ...[
-                      Text(
-                        'Enter your email',
-                        style: Theme.of(context).textTheme.titleLarge,
-                        textAlign: TextAlign.center,
+                    Text(
+                      'Create your account',
+                      style: Theme.of(context).textTheme.titleLarge,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _email,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      decoration: const InputDecoration(labelText: 'Email'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _password,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: 'Password'),
+                      onSubmitted: (_) => submit(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _first,
+                      decoration: const InputDecoration(
+                        labelText: 'First name (optional)',
                       ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _email,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(labelText: 'Email'),
-                        onSubmitted: (_) => submitEmail(),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _last,
+                      decoration: const InputDecoration(
+                        labelText: 'Last name (optional)',
                       ),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _busy ? null : submitEmail,
-                        child: Text(_busy ? 'Sending…' : 'Send confirmation'),
-                      ),
-                    ] else ...[
-                      Text(
-                        'Confirm and set password',
-                        style: Theme.of(context).textTheme.titleLarge,
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      if (_devToken != null)
-                        Text(
-                          'Dev token: $_devToken',
-                          style: Theme.of(context).textTheme.bodySmall,
-                          textAlign: TextAlign.center,
-                        ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _token,
-                        decoration: const InputDecoration(
-                          labelText: 'Confirmation token',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _password,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _first,
-                        decoration: const InputDecoration(
-                          labelText: 'First name (optional)',
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _last,
-                        decoration: const InputDecoration(
-                          labelText: 'Last name (optional)',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _busy ? null : submitProfile,
-                        child: Text(_busy ? 'Creating…' : 'Create account'),
-                      ),
-                    ],
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _busy ? null : submit,
+                      child: Text(_busy ? 'Creating…' : 'Create account'),
+                    ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),
                       Text(

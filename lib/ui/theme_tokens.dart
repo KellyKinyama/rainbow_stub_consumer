@@ -55,6 +55,8 @@ class PhoneTokens {
   static const double subtitleFontSize = 12;
   static const double titleFontSize = 15;
   static const double sectionHeadingFontSize = 17;
+  // Icons get the same ~+15% legibility bump the fonts do (24 -> 27).
+  static const double iconSize = 27;
   static const String fontFamily = 'Roboto';
 }
 

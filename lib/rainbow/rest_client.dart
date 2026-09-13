@@ -129,6 +129,61 @@ class RainbowRestClient {
     return RainbowUser.fromJson(j['data'] as Map<String, dynamic>);
   }
 
+  /// Registers a new account as UNVERIFIED and triggers a verification
+  /// code (dev: returned as `devToken`). The account can sign in right
+  /// away; the app nudges the user to verify.
+  Future<({RainbowUser user, String? devToken})> register({
+    required String email,
+    required String password,
+    String? firstName,
+    String? lastName,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/register'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        if (firstName != null && firstName.isNotEmpty) 'firstName': firstName,
+        if (lastName != null && lastName.isNotEmpty) 'lastName': lastName,
+      }),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return (
+      user: RainbowUser.fromJson(j['data'] as Map<String, dynamic>),
+      devToken: j['devToken'] as String?,
+    );
+  }
+
+  /// Confirms an email verification [token] for [email]; returns the
+  /// now-verified user.
+  Future<RainbowUser> verifyEmail({
+    required String email,
+    required String token,
+  }) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/verify-email'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({'email': email, 'token': token}),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return RainbowUser.fromJson(j['data'] as Map<String, dynamic>);
+  }
+
+  /// Requests a fresh verification code for [email] (dev: `devToken`).
+  Future<String?> resendVerification(String email) async {
+    final r = await _http.post(
+      _u('/api/rainbow/enduser/v1.0/users/resend-verification'),
+      headers: _authed(contentType: 'application/json', includeAppAuth: true),
+      body: jsonEncode({'email': email}),
+    );
+    _check(r);
+    final j = jsonDecode(r.body) as Map<String, dynamic>;
+    return j['devToken'] as String?;
+  }
+
   /// Reset-password step 1: request an email with a reset token.
   /// Same devToken-in-response trick as [selfRegisterSendEmail].
   Future<String> resetPasswordSendEmail(String email) async {

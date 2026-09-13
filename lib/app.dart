@@ -144,6 +144,14 @@ ThemeData _buildTheme(ColorScheme scheme, Color scaffoldBg) {
       elevation: 0,
       scrolledUnderElevation: 0,
       shape: Border(bottom: BorderSide(color: scheme.outline)),
+      iconTheme: IconThemeData(
+        color: scheme.onSurface,
+        size: PhoneTokens.iconSize,
+      ),
+      actionsIconTheme: IconThemeData(
+        color: scheme.onSurface,
+        size: PhoneTokens.iconSize,
+      ),
       titleTextStyle: TextStyle(
         color: scheme.onSurface,
         fontFamily: PhoneTokens.fontFamily,
@@ -175,7 +183,10 @@ ThemeData _buildTheme(ColorScheme scheme, Color scaffoldBg) {
       style: TextButton.styleFrom(foregroundColor: PhoneTokens.accent),
     ),
     iconButtonTheme: IconButtonThemeData(
-      style: IconButton.styleFrom(foregroundColor: scheme.onSurface),
+      style: IconButton.styleFrom(
+        foregroundColor: scheme.onSurface,
+        iconSize: PhoneTokens.iconSize,
+      ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
       backgroundColor: PhoneTokens.accent,
@@ -187,6 +198,9 @@ ThemeData _buildTheme(ColorScheme scheme, Color scaffoldBg) {
       indicatorColor: scheme.surfaceContainerHighest,
       surfaceTintColor: Colors.transparent,
       elevation: 1,
+      iconTheme: WidgetStateProperty.all(
+        const IconThemeData(size: PhoneTokens.iconSize),
+      ),
       labelTextStyle: WidgetStateProperty.all(
         TextStyle(fontFamily: PhoneTokens.fontFamily, fontSize: 12),
       ),
@@ -196,5 +210,6 @@ ThemeData _buildTheme(ColorScheme scheme, Color scaffoldBg) {
       bodyColor: scheme.onSurface,
       displayColor: scheme.onSurface,
     ),
+    iconTheme: const IconThemeData(size: PhoneTokens.iconSize),
   );
 }

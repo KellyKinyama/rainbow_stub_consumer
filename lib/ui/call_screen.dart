@@ -323,7 +323,7 @@ class _CallControlsState extends State<_CallControls> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         PhoneCallButton(
-          icon: _muted ? Icons.mic_off : Icons.mic,
+          icon: _muted ? Icons.mic_off_rounded : Icons.mic_rounded,
           label: _muted ? 'Unmute' : 'Mute',
           variant: _muted
               ? PhoneCallButtonVariant.active
@@ -336,7 +336,9 @@ class _CallControlsState extends State<_CallControls> {
         if (widget.call.hasVideo) ...[
           const SizedBox(width: 16),
           PhoneCallButton(
-            icon: _cameraOn ? Icons.videocam : Icons.videocam_off,
+            icon: _cameraOn
+                ? Icons.videocam_rounded
+                : Icons.videocam_off_rounded,
             label: _cameraOn ? 'Camera' : 'Camera off',
             variant: _cameraOn
                 ? PhoneCallButtonVariant.neutral
@@ -348,7 +350,7 @@ class _CallControlsState extends State<_CallControls> {
           ),
           const SizedBox(width: 16),
           PhoneCallButton(
-            icon: Icons.cameraswitch,
+            icon: Icons.cameraswitch_rounded,
             label: 'Flip',
             onTap: () => widget.call.session.switchCamera(),
           ),
@@ -356,14 +358,14 @@ class _CallControlsState extends State<_CallControls> {
         const SizedBox(width: 16),
         if (isIncomingRinging)
           PhoneCallButton(
-            icon: Icons.call,
+            icon: Icons.call_rounded,
             label: 'Answer',
             variant: PhoneCallButtonVariant.answer,
             onTap: () => widget.manager.answer(widget.call.sid),
           )
         else
           PhoneCallButton(
-            icon: Icons.call_end,
+            icon: Icons.call_end_rounded,
             label: 'End',
             variant: PhoneCallButtonVariant.hangup,
             onTap: () => widget.manager.hangUp(widget.call.sid),

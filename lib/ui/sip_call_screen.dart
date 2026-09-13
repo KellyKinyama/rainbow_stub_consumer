@@ -154,13 +154,13 @@ class _SipCallScreenState extends State<SipCallScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _RoundAction(
-            icon: Icons.call_end,
+            icon: Icons.call_end_rounded,
             color: Colors.red,
             label: 'Decline',
             onTap: service.hangup,
           ),
           _RoundAction(
-            icon: Icons.call,
+            icon: Icons.call_rounded,
             color: Colors.green,
             label: 'Answer',
             onTap: service.answer,
@@ -172,19 +172,19 @@ class _SipCallScreenState extends State<SipCallScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
         _RoundAction(
-          icon: service.muted ? Icons.mic_off : Icons.mic,
+          icon: service.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
           color: service.muted ? Colors.orange : Colors.blueGrey,
           label: service.muted ? 'Unmute' : 'Mute',
           onTap: service.toggleMute,
         ),
         _RoundAction(
-          icon: Icons.dialpad,
+          icon: Icons.dialpad_rounded,
           color: _showDtmf ? Colors.blue : Colors.blueGrey,
           label: 'Keypad',
           onTap: () => setState(() => _showDtmf = !_showDtmf),
         ),
         _RoundAction(
-          icon: Icons.call_end,
+          icon: Icons.call_end_rounded,
           color: Colors.red,
           label: 'End',
           onTap: service.hangup,

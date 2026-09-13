@@ -87,13 +87,13 @@ class _StartStrip extends StatelessWidget {
               ),
             ),
             TextButton.icon(
-              icon: const Icon(Icons.call),
+              icon: const Icon(Icons.call_rounded),
               label: const Text('Audio'),
               onPressed: onStartAudio,
             ),
             const SizedBox(width: 4),
             TextButton.icon(
-              icon: const Icon(Icons.videocam),
+              icon: const Icon(Icons.videocam_rounded),
               label: const Text('Video'),
               onPressed: onStartVideo,
             ),
@@ -126,7 +126,7 @@ class _JoinStrip extends StatelessWidget {
               ),
             ),
             FilledButton.icon(
-              icon: const Icon(Icons.call),
+              icon: const Icon(Icons.call_rounded),
               label: const Text('Join'),
               onPressed: onJoin,
             ),
@@ -158,7 +158,7 @@ class _InCallStrip extends StatelessWidget {
                 child: Text('You are in this group call · tap to open'),
               ),
               OutlinedButton.icon(
-                icon: const Icon(Icons.call_end),
+                icon: const Icon(Icons.call_end_rounded),
                 label: const Text('Leave'),
                 onPressed: onLeave,
               ),

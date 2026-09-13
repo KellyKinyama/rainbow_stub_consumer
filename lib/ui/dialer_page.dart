@@ -160,7 +160,7 @@ class _DialerBody extends StatelessWidget {
                         child: InkWell(
                           onTap: () => _call(context),
                           child: const Icon(
-                            Icons.call,
+                            Icons.call_rounded,
                             color: Colors.white,
                             size: 32,
                           ),

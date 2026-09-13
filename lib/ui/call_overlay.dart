@@ -75,7 +75,7 @@ class _CallCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            const Icon(Icons.phone_in_talk),
+            const Icon(Icons.phone_in_talk_rounded),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -97,12 +97,12 @@ class _CallCard extends StatelessWidget {
             ),
             if (isIncoming && call.state == CallState.ringing)
               IconButton(
-                icon: const Icon(Icons.call),
+                icon: const Icon(Icons.call_rounded),
                 color: Colors.green,
                 onPressed: () => manager.answer(call.sid),
               ),
             IconButton(
-              icon: const Icon(Icons.call_end),
+              icon: const Icon(Icons.call_end_rounded),
               color: scheme.error,
               onPressed: () => manager.hangUp(call.sid),
             ),

@@ -259,13 +259,13 @@ class ChatPage extends RearchConsumer {
         actions: [
           PhoneRoundButton(
             tooltip: 'Voice call',
-            icon: Icons.call,
+            icon: Icons.call_rounded,
             onPressed: () =>
                 callManager.startCall(peer: peer, peerFullJid: threadKey),
           ),
           PhoneRoundButton(
             tooltip: 'Video call',
-            icon: Icons.videocam,
+            icon: Icons.videocam_rounded,
             onPressed: () => callManager.startCall(
               peer: peer,
               peerFullJid: threadKey,

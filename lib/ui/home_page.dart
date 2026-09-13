@@ -13,6 +13,7 @@ import '../state/capsules/detail_selection_capsule.dart';
 import '../state/capsules/outbox_count_capsule.dart';
 import '../state/capsules/permissions_capsule.dart';
 import '../state/capsules/push_capsule.dart';
+import '../state/capsules/rest_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import '../state/capsules/xmpp_capsule.dart';
@@ -33,6 +34,7 @@ class HomePage extends RearchConsumer {
   Widget build(BuildContext context, WidgetHandle use) {
     final auth = use(authControllerCapsule);
     final actions = use(chatActionsCapsule);
+    final rest = use(restCapsule);
     final me = use(authCapsule).me;
     // Register a fake push token as a side-effect on login. Result
     // ignored — the capsule handles retries + logout deregister.
@@ -134,7 +136,7 @@ class HomePage extends RearchConsumer {
         actions: [
           IconButton(
             tooltip: 'Phone / Dialer',
-            icon: const Icon(Icons.dialpad),
+            icon: const Icon(Icons.dialpad_rounded),
             onPressed: () => Navigator.of(
               context,
             ).push(MaterialPageRoute<void>(builder: (_) => const DialerPage())),
@@ -180,15 +182,24 @@ class HomePage extends RearchConsumer {
             itemBuilder: (_) => const [
               PopupMenuItem(
                 value: 'profile',
-                child: _MenuRow(icon: Icons.person, label: 'My profile'),
+                child: _MenuRow(
+                  icon: Icons.person_rounded,
+                  label: 'My profile',
+                ),
               ),
               PopupMenuItem(
                 value: 'calls',
-                child: _MenuRow(icon: Icons.call, label: 'Recent calls'),
+                child: _MenuRow(
+                  icon: Icons.call_rounded,
+                  label: 'Recent calls',
+                ),
               ),
               PopupMenuItem(
                 value: 'dialer',
-                child: _MenuRow(icon: Icons.dialpad, label: 'Phone / Dialer'),
+                child: _MenuRow(
+                  icon: Icons.dialpad_rounded,
+                  label: 'Phone / Dialer',
+                ),
               ),
               PopupMenuDivider(),
               PopupMenuItem(
@@ -218,7 +229,7 @@ class HomePage extends RearchConsumer {
               PopupMenuDivider(),
               PopupMenuItem(
                 value: 'signout',
-                child: _MenuRow(icon: Icons.logout, label: 'Sign out'),
+                child: _MenuRow(icon: Icons.logout_rounded, label: 'Sign out'),
               ),
             ],
           ),
@@ -227,6 +238,15 @@ class HomePage extends RearchConsumer {
       body: Column(
         children: [
           if (!online) const _OfflineBanner(),
+          if (me != null && !me.emailVerified)
+            _UnverifiedEmailBanner(
+              email: me.loginEmail,
+              onResend: () => rest.resendVerification(me.loginEmail),
+              onVerify: (code) async {
+                await rest.verifyEmail(email: me.loginEmail, token: code);
+                await auth.refreshMe();
+              },
+            ),
           if (outboxCount > 0) _OutboxBanner(count: outboxCount),
           if (permissions.anyDenied) _PermissionsBanner(state: permissions),
           Expanded(
@@ -242,6 +262,15 @@ class HomePage extends RearchConsumer {
           ),
         ],
       ),
+      // WhatsApp-style green 'new chat' FAB on the Chats/Recent tab
+      // (narrow layout only, so it never covers the detail pane chat).
+      floatingActionButton: (tab == 0 && !isWideLayout(context))
+          ? FloatingActionButton(
+              tooltip: 'New chat',
+              onPressed: () => setTab(1),
+              child: const Icon(Icons.chat_rounded),
+            )
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: tab,
         onDestinationSelected: setTab,
@@ -250,30 +279,30 @@ class HomePage extends RearchConsumer {
             icon: Badge.count(
               isLabelVisible: recentUnread > 0,
               count: recentUnread,
-              child: const Icon(Icons.chat_bubble_outline),
+              child: const Icon(Icons.chat_outlined),
             ),
             selectedIcon: Badge.count(
               isLabelVisible: recentUnread > 0,
               count: recentUnread,
-              child: const Icon(Icons.chat_bubble),
+              child: const Icon(Icons.chat_rounded),
             ),
             label: 'Recent',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
+            icon: Icon(Icons.people_outline_rounded),
+            selectedIcon: Icon(Icons.people_rounded),
             label: 'Contacts',
           ),
           NavigationDestination(
             icon: Badge.count(
               isLabelVisible: bubbleUnread > 0,
               count: bubbleUnread,
-              child: const Icon(Icons.forum_outlined),
+              child: const Icon(Icons.groups_outlined),
             ),
             selectedIcon: Badge.count(
               isLabelVisible: bubbleUnread > 0,
               count: bubbleUnread,
-              child: const Icon(Icons.forum),
+              child: const Icon(Icons.groups_rounded),
             ),
             label: 'Bubbles',
           ),
@@ -318,6 +347,178 @@ class _PermissionsBanner extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _UnverifiedEmailBanner extends StatelessWidget {
+  const _UnverifiedEmailBanner({
+    required this.email,
+    required this.onResend,
+    required this.onVerify,
+  });
+
+  final String email;
+  final Future<String?> Function() onResend;
+  final Future<void> Function(String code) onVerify;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(
+              Icons.mark_email_unread_outlined,
+              color: scheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Verify your email to secure your account.',
+                style: TextStyle(color: scheme.onTertiaryContainer),
+              ),
+            ),
+            TextButton(
+              onPressed: () => showDialog<void>(
+                context: context,
+                builder: (_) => _VerifyEmailDialog(
+                  email: email,
+                  onResend: onResend,
+                  onVerify: onVerify,
+                ),
+              ),
+              child: const Text('Verify'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _VerifyEmailDialog extends StatefulWidget {
+  const _VerifyEmailDialog({
+    required this.email,
+    required this.onResend,
+    required this.onVerify,
+  });
+
+  final String email;
+  final Future<String?> Function() onResend;
+  final Future<void> Function(String code) onVerify;
+
+  @override
+  State<_VerifyEmailDialog> createState() => _VerifyEmailDialogState();
+}
+
+class _VerifyEmailDialogState extends State<_VerifyEmailDialog> {
+  final _code = TextEditingController();
+  String? _error;
+  String? _devHint;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _resend() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final code = await widget.onResend();
+      if (!mounted) return;
+      setState(() {
+        _devHint = code;
+        if (code != null) _code.text = code;
+      });
+    } on Object catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _verify() async {
+    final code = _code.text.trim();
+    if (code.isEmpty) {
+      setState(() => _error = 'Enter the code');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.onVerify(code);
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Email verified ✓')));
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Verify your email'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Enter the 6-digit code sent to ${widget.email}.'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _code,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Verification code'),
+            onSubmitted: (_) => _verify(),
+          ),
+          if (_devHint != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Dev code: $_devHint',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _busy ? null : _resend,
+          child: const Text('Resend'),
+        ),
+        TextButton(
+          onPressed: _busy ? null : () => Navigator.of(context).pop(),
+          child: const Text('Later'),
+        ),
+        FilledButton(
+          onPressed: _busy ? null : _verify,
+          child: Text(_busy ? '…' : 'Verify'),
+        ),
+      ],
     );
   }
 }

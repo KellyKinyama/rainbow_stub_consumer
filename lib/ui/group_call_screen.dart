@@ -357,7 +357,7 @@ class _CallControlsState extends State<_CallControls> {
       runSpacing: 16,
       children: [
         PhoneCallButton(
-          icon: _muted ? Icons.mic_off : Icons.mic,
+          icon: _muted ? Icons.mic_off_rounded : Icons.mic_rounded,
           label: _muted ? 'Unmute' : 'Mute',
           variant: _muted
               ? PhoneCallButtonVariant.active
@@ -368,7 +368,7 @@ class _CallControlsState extends State<_CallControls> {
           },
         ),
         PhoneCallButton(
-          icon: _cameraOn ? Icons.videocam : Icons.videocam_off,
+          icon: _cameraOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
           label: _cameraOn ? 'Camera' : 'Camera off',
           variant: _cameraOn
               ? PhoneCallButtonVariant.neutral
@@ -379,7 +379,9 @@ class _CallControlsState extends State<_CallControls> {
           },
         ),
         PhoneCallButton(
-          icon: _speakerOn ? Icons.volume_up : Icons.volume_down,
+          icon: _speakerOn
+              ? Icons.volume_up_rounded
+              : Icons.volume_down_rounded,
           label: 'Speaker',
           variant: _speakerOn
               ? PhoneCallButtonVariant.active
@@ -390,18 +392,18 @@ class _CallControlsState extends State<_CallControls> {
           },
         ),
         PhoneCallButton(
-          icon: Icons.cameraswitch,
+          icon: Icons.cameraswitch_rounded,
           label: 'Flip',
           onTap: () => widget.session.switchCamera(),
         ),
         PhoneCallButton(
-          icon: Icons.person_add,
+          icon: Icons.person_add_rounded,
           label: 'Add',
           onTap: widget.onAddParticipant,
         ),
         if (widget.canModerate)
           PhoneCallButton(
-            icon: widget.locked ? Icons.lock : Icons.lock_open,
+            icon: widget.locked ? Icons.lock_rounded : Icons.lock_open_rounded,
             label: widget.locked ? 'Locked' : 'Lock',
             variant: widget.locked
                 ? PhoneCallButtonVariant.active
@@ -409,12 +411,12 @@ class _CallControlsState extends State<_CallControls> {
             onTap: widget.onToggleLock,
           ),
         PhoneCallButton(
-          icon: Icons.close_fullscreen,
+          icon: Icons.close_fullscreen_rounded,
           label: 'Hide',
           onTap: widget.onHideView,
         ),
         PhoneCallButton(
-          icon: Icons.call_end,
+          icon: Icons.call_end_rounded,
           label: 'Leave',
           variant: PhoneCallButtonVariant.hangup,
           onTap: widget.onLeave,

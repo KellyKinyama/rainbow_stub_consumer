@@ -12,6 +12,7 @@ class RainbowUser {
     this.presenceShow,
     this.presenceStatus,
     this.hasAvatar = false,
+    this.emailVerified = true,
   });
 
   final String id;
@@ -26,6 +27,7 @@ class RainbowUser {
   final String? presenceShow;
   final String? presenceStatus;
   final bool hasAvatar;
+  final bool emailVerified;
 
   String get display => (displayName?.isNotEmpty ?? false)
       ? displayName!
@@ -46,6 +48,8 @@ class RainbowUser {
     presenceShow: (j['presence'] as Map?)?['show'] as String?,
     presenceStatus: (j['presence'] as Map?)?['status'] as String?,
     hasAvatar: j['lastAvatarUpdateDate'] != null,
+    // Absent on older payloads/sessions → treat as verified.
+    emailVerified: (j['emailVerified'] as bool?) ?? true,
   );
 }
 

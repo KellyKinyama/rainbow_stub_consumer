@@ -13,7 +13,7 @@ class PhoneRoundButton extends StatelessWidget {
     this.tooltip,
     this.color,
     this.size = 40,
-    this.iconSize = 20,
+    this.iconSize = 24,
     this.background,
   });
 
