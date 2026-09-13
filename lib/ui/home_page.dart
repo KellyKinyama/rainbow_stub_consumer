@@ -22,6 +22,7 @@ import 'call_log_page.dart';
 import 'chat_page.dart';
 import 'contacts_tab.dart';
 import 'conversations_tab.dart';
+import 'dialer_page.dart';
 import 'profile_page.dart';
 import 'responsive.dart';
 
@@ -131,6 +132,13 @@ class HomePage extends RearchConsumer {
       appBar: AppBar(
         title: Text(titles[tab]),
         actions: [
+          IconButton(
+            tooltip: 'Phone / Dialer',
+            icon: const Icon(Icons.dialpad),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute<void>(builder: (_) => const DialerPage())),
+          ),
           PopupMenuButton<String>(
             icon: Badge.count(
               isLabelVisible: unread.total > 0,
@@ -157,6 +165,10 @@ class HomePage extends RearchConsumer {
                       builder: (_) => const CallLogPage(),
                     ),
                   );
+                case 'dialer':
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(builder: (_) => const DialerPage()),
+                  );
                 case 'online':
                 case 'away':
                 case 'dnd':
@@ -173,6 +185,10 @@ class HomePage extends RearchConsumer {
               PopupMenuItem(
                 value: 'calls',
                 child: _MenuRow(icon: Icons.call, label: 'Recent calls'),
+              ),
+              PopupMenuItem(
+                value: 'dialer',
+                child: _MenuRow(icon: Icons.dialpad, label: 'Phone / Dialer'),
               ),
               PopupMenuDivider(),
               PopupMenuItem(
