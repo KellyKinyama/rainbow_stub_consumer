@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:sip_ua/sip_ua.dart';
@@ -21,6 +23,7 @@ class _SipCallScreenState extends State<SipCallScreen> {
   bool _rendererReady = false;
   bool _showDtmf = false;
   DateTime? _connectedAt;
+  Timer? _tick;
 
   @override
   void initState() {
@@ -29,6 +32,10 @@ class _SipCallScreenState extends State<SipCallScreen> {
       if (!mounted) return;
       setState(() => _rendererReady = true);
       _attachStream();
+    });
+    // Ticks the in-call duration label once per second.
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _connectedAt != null) setState(() {});
     });
   }
 
@@ -52,6 +59,7 @@ class _SipCallScreenState extends State<SipCallScreen> {
 
   @override
   void dispose() {
+    _tick?.cancel();
     _remote.srcObject = null;
     _remote.dispose();
     super.dispose();
@@ -102,47 +110,91 @@ class _SipCallScreenState extends State<SipCallScreen> {
     }
   }
 
+  /// mm:ss (or h:mm:ss) since the call connected; null before then.
+  String? _durationLabel() {
+    final start = _connectedAt;
+    if (start == null) return null;
+    final d = DateTime.now().difference(start);
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
+  }
+
   @override
   Widget build(BuildContext context) {
     _attachStream();
     final service = widget.service;
     final incoming = service.isIncoming;
-    final scheme = Theme.of(context).colorScheme;
+    final duration = _durationLabel();
 
     return Scaffold(
-      backgroundColor: scheme.surface,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Offstage 1×1 view so remote audio is routed to the device.
-            SizedBox(
-              width: 1,
-              height: 1,
-              child: _rendererReady
-                  ? RTCVideoView(_remote)
-                  : const SizedBox.shrink(),
-            ),
-            const Spacer(),
-            CircleAvatar(
-              radius: 48,
-              backgroundColor: scheme.primaryContainer,
-              child: Text(
-                _title().characters.first.toUpperCase(),
-                style: const TextStyle(fontSize: 40),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF20463D), Color(0xFF0B1A17)],
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              // Offstage 1×1 view so remote audio is routed to the device.
+              SizedBox(
+                width: 1,
+                height: 1,
+                child: _rendererReady
+                    ? RTCVideoView(_remote)
+                    : const SizedBox.shrink(),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(_title(), style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(_status(), style: Theme.of(context).textTheme.bodyLarge),
-            const Spacer(),
-            if (_showDtmf) ...[
-              DialPad(compact: true, onKey: service.sendDtmf),
-              const SizedBox(height: 12),
+              const Spacer(flex: 2),
+              CircleAvatar(
+                radius: 58,
+                backgroundColor: Colors.white.withValues(alpha: 0.12),
+                child: Text(
+                  _title().characters.first.toUpperCase(),
+                  style: const TextStyle(fontSize: 50, color: Colors.white),
+                ),
+              ),
+              const SizedBox(height: 22),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  _title(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                duration ?? _status(),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
+              ),
+              const Spacer(flex: 3),
+              if (_showDtmf) ...[
+                DialPad(compact: true, onKey: service.sendDtmf),
+                TextButton(
+                  onPressed: () => setState(() => _showDtmf = false),
+                  child: const Text(
+                    'Hide keypad',
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                ),
+                const SizedBox(height: 8),
+              ],
+              _controls(context, service, incoming),
+              const SizedBox(height: 32),
             ],
-            _controls(context, service, incoming),
-            const SizedBox(height: 24),
-          ],
+          ),
         ),
       ),
     );
@@ -153,40 +205,54 @@ class _SipCallScreenState extends State<SipCallScreen> {
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _RoundAction(
+          _CircleBtn(
             icon: Icons.call_end_rounded,
-            color: Colors.red,
             label: 'Decline',
+            bg: Colors.red,
             onTap: service.hangup,
           ),
-          _RoundAction(
+          _CircleBtn(
             icon: Icons.call_rounded,
-            color: Colors.green,
             label: 'Answer',
+            bg: Colors.green,
             onTap: service.answer,
           ),
         ],
       );
     }
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Column(
       children: [
-        _RoundAction(
-          icon: service.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
-          color: service.muted ? Colors.orange : Colors.blueGrey,
-          label: service.muted ? 'Unmute' : 'Mute',
-          onTap: service.toggleMute,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _CircleBtn(
+              icon: service.muted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              label: service.muted ? 'Unmute' : 'Mute',
+              active: service.muted,
+              onTap: service.toggleMute,
+            ),
+            _CircleBtn(
+              icon: service.held
+                  ? Icons.play_arrow_rounded
+                  : Icons.pause_rounded,
+              label: service.held ? 'Resume' : 'Hold',
+              active: service.held,
+              onTap: service.toggleHold,
+            ),
+            _CircleBtn(
+              icon: Icons.dialpad_rounded,
+              label: 'Keypad',
+              active: _showDtmf,
+              onTap: () => setState(() => _showDtmf = !_showDtmf),
+            ),
+          ],
         ),
-        _RoundAction(
-          icon: Icons.dialpad_rounded,
-          color: _showDtmf ? Colors.blue : Colors.blueGrey,
-          label: 'Keypad',
-          onTap: () => setState(() => _showDtmf = !_showDtmf),
-        ),
-        _RoundAction(
+        const SizedBox(height: 28),
+        _CircleBtn(
           icon: Icons.call_end_rounded,
-          color: Colors.red,
           label: 'End',
+          bg: Colors.red,
+          size: 74,
           onTap: service.hangup,
         ),
       ],
@@ -194,38 +260,54 @@ class _SipCallScreenState extends State<SipCallScreen> {
   }
 }
 
-class _RoundAction extends StatelessWidget {
-  const _RoundAction({
+class _CircleBtn extends StatelessWidget {
+  const _CircleBtn({
     required this.icon,
-    required this.color,
     required this.label,
     required this.onTap,
+    this.bg,
+    this.active = false,
+    this.size = 62,
   });
 
   final IconData icon;
-  final Color color;
   final String label;
   final VoidCallback onTap;
+  final Color? bg;
+  final bool active;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
+    final background =
+        bg ?? (active ? Colors.white : Colors.white.withValues(alpha: 0.16));
+    final fg = bg != null
+        ? Colors.white
+        : (active ? const Color(0xFF0B1A17) : Colors.white);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Material(
-          color: color,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Icon(icon, color: Colors.white, size: 28),
+        SizedBox(
+          width: size,
+          height: size,
+          child: Material(
+            color: background,
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: onTap,
+              child: Icon(icon, color: fg, size: size * 0.42),
             ),
           ),
         ),
-        const SizedBox(height: 6),
-        Text(label, style: Theme.of(context).textTheme.labelSmall),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.white.withValues(alpha: 0.8),
+          ),
+        ),
       ],
     );
   }

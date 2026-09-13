@@ -15,6 +15,7 @@ import '../state/capsules/active_thread_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
+import 'chat_wallpaper.dart';
 import 'bubble_details_page.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
@@ -250,104 +251,106 @@ class BubbleChatPage extends RearchConsumer {
           const SizedBox(width: 4),
         ],
       ),
-      body: Column(
-        children: [
-          GroupCallBanner(bubble: bubble),
-          ListenableBuilder(
-            listenable: mamPageStateOf(threadKey),
-            builder: (ctx, _) {
-              final s = mamPageStateOf(threadKey);
-              return LoadOlderChip(
-                canLoadMore: s.canLoadMore,
-                isLoading: s.isLoading,
-                onTap: () => actions.loadOlder(threadKey),
-              );
-            },
-          ),
-          Expanded(
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (n) {
-                final m = n.metrics;
-                if (m.axis == Axis.vertical &&
-                    m.pixels >= m.maxScrollExtent - 200) {
-                  actions.loadOlder(threadKey);
-                }
-                return false;
+      body: ChatWallpaper(
+        child: Column(
+          children: [
+            GroupCallBanner(bubble: bubble),
+            ListenableBuilder(
+              listenable: mamPageStateOf(threadKey),
+              builder: (ctx, _) {
+                final s = mamPageStateOf(threadKey);
+                return LoadOlderChip(
+                  canLoadMore: s.canLoadMore,
+                  isLoading: s.isLoading,
+                  onTap: () => actions.loadOlder(threadKey),
+                );
               },
-              child: Chat(
-                currentUserId: currentUserId,
-                resolveUser: resolveUser,
-                chatController: topicController,
-                builders: Builders(
-                  composerBuilder: (ctx) =>
-                      Composer(textEditingController: input),
-                  textMessageBuilder:
-                      (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                          wrapChatBubble(
-                            message: msg,
-                            isSentByMe: isSentByMe,
-                            currentUserId: currentUserId,
-                            replyTarget: lookupTarget(msg.replyToMessageId),
-                            reactions: msg.reactions,
-                            onReactionTap: (e) => toggleMyReaction(msg, e),
-                            child: PhoneTextBubble(
-                              message: msg,
-                              isSentByMe: isSentByMe,
-                            ),
-                          ),
-                  imageMessageBuilder:
-                      (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                          wrapChatBubble(
-                            message: msg,
-                            isSentByMe: isSentByMe,
-                            currentUserId: currentUserId,
-                            replyTarget: lookupTarget(msg.replyToMessageId),
-                            reactions: msg.reactions,
-                            onReactionTap: (e) => toggleMyReaction(msg, e),
-                            child: InlineImageBubble(
-                              message: msg,
-                              isSentByMe: isSentByMe,
-                            ),
-                          ),
-                ),
-                onAttachmentTap: () async {
-                  final picked = await showAttachmentPicker(context);
-                  if (picked == null) return;
-                  await actions.sendGroupFile(
-                    bubble,
-                    bytes: picked.bytes,
-                    fileName: picked.fileName,
-                    mimeType: picked.mimeType,
-                  );
-                },
-                onMessageLongPress: onLongPress,
-                onMessageSend: (text) {
-                  final trimmed = text.trim();
-                  if (trimmed.isEmpty) return;
-                  if (editing != null) {
-                    actions.editGroup(
-                      bubble,
-                      originalStanzaId: editing.id,
-                      newBody: trimmed,
-                    );
-                  } else {
-                    actions.sendGroup(
-                      bubble,
-                      trimmed,
-                      replyToStanzaId: replyingTo?.id,
-                      thread: thread,
-                      subject: pendingSubject,
-                    );
-                    // The subject only rides the topic's first message.
-                    if (pendingSubject != null) setPendingSubject(null);
+            ),
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (n) {
+                  final m = n.metrics;
+                  if (m.axis == Axis.vertical &&
+                      m.pixels >= m.maxScrollExtent - 200) {
+                    actions.loadOlder(threadKey);
                   }
-                  clearBanner();
+                  return false;
                 },
+                child: Chat(
+                  currentUserId: currentUserId,
+                  resolveUser: resolveUser,
+                  chatController: topicController,
+                  builders: Builders(
+                    composerBuilder: (ctx) =>
+                        Composer(textEditingController: input),
+                    textMessageBuilder:
+                        (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                            wrapChatBubble(
+                              message: msg,
+                              isSentByMe: isSentByMe,
+                              currentUserId: currentUserId,
+                              replyTarget: lookupTarget(msg.replyToMessageId),
+                              reactions: msg.reactions,
+                              onReactionTap: (e) => toggleMyReaction(msg, e),
+                              child: PhoneTextBubble(
+                                message: msg,
+                                isSentByMe: isSentByMe,
+                              ),
+                            ),
+                    imageMessageBuilder:
+                        (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                            wrapChatBubble(
+                              message: msg,
+                              isSentByMe: isSentByMe,
+                              currentUserId: currentUserId,
+                              replyTarget: lookupTarget(msg.replyToMessageId),
+                              reactions: msg.reactions,
+                              onReactionTap: (e) => toggleMyReaction(msg, e),
+                              child: InlineImageBubble(
+                                message: msg,
+                                isSentByMe: isSentByMe,
+                              ),
+                            ),
+                  ),
+                  onAttachmentTap: () async {
+                    final picked = await showAttachmentPicker(context);
+                    if (picked == null) return;
+                    await actions.sendGroupFile(
+                      bubble,
+                      bytes: picked.bytes,
+                      fileName: picked.fileName,
+                      mimeType: picked.mimeType,
+                    );
+                  },
+                  onMessageLongPress: onLongPress,
+                  onMessageSend: (text) {
+                    final trimmed = text.trim();
+                    if (trimmed.isEmpty) return;
+                    if (editing != null) {
+                      actions.editGroup(
+                        bubble,
+                        originalStanzaId: editing.id,
+                        newBody: trimmed,
+                      );
+                    } else {
+                      actions.sendGroup(
+                        bubble,
+                        trimmed,
+                        replyToStanzaId: replyingTo?.id,
+                        thread: thread,
+                        subject: pendingSubject,
+                      );
+                      // The subject only rides the topic's first message.
+                      if (pendingSubject != null) setPendingSubject(null);
+                    }
+                    clearBanner();
+                  },
+                ),
               ),
             ),
-          ),
-          if (banner != null) banner,
-        ],
+            if (banner != null) banner,
+          ],
+        ),
       ),
     );
   }

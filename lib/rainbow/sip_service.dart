@@ -105,6 +105,7 @@ class SipService extends ChangeNotifier implements SipUaHelperListener {
   CallStateEnum callState = CallStateEnum.NONE;
   MediaStream? remoteStream;
   bool muted = false;
+  bool held = false;
   String? lastError;
 
   bool get isRegistered => registerState == RegistrationStateEnum.REGISTERED;
@@ -189,11 +190,24 @@ class SipService extends ChangeNotifier implements SipUaHelperListener {
     notifyListeners();
   }
 
+  void toggleHold() {
+    final c = activeCall;
+    if (c == null) return;
+    if (held) {
+      c.unhold();
+    } else {
+      c.hold();
+    }
+    held = !held;
+    notifyListeners();
+  }
+
   void _resetCall() {
     activeCall = null;
     callState = CallStateEnum.NONE;
     remoteStream = null;
     muted = false;
+    held = false;
   }
 
   // --- SipUaHelperListener ---
