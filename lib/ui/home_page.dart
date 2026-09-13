@@ -16,7 +16,7 @@ import '../state/capsules/push_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
 import '../state/capsules/xmpp_capsule.dart';
-import 'bubble_chat_page.dart';
+import 'bubble_topics_page.dart';
 import 'bubbles_tab.dart';
 import 'call_log_page.dart';
 import 'chat_page.dart';
@@ -405,7 +405,7 @@ class _DetailPane extends StatelessWidget {
         key: ValueKey('peer:${peer.id}'),
         peer: peer,
       ),
-      BubbleSelection(:final bubble) => BubbleChatPage(
+      BubbleSelection(:final bubble) => BubbleTopicsPage(
         key: ValueKey('bubble:${bubble.id}'),
         bubble: bubble,
       ),

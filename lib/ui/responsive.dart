@@ -3,7 +3,7 @@ import 'package:rearch/rearch.dart';
 
 import '../rainbow/models.dart';
 import '../state/capsules/detail_selection_capsule.dart';
-import 'bubble_chat_page.dart';
+import 'bubble_topics_page.dart';
 import 'chat_page.dart';
 
 /// Width at or above which the home screen switches from single-pane
@@ -30,18 +30,15 @@ void openPeerChat(
   }
 }
 
-/// Opens the group chat for [bubble]. Detail pane on wide layouts,
-/// pushed [BubbleChatPage] on narrow ones.
+/// Opens the group's topic list full-screen (whole app), regardless of
+/// layout. Topics replace the list; drilling into a topic and backing
+/// out is plain push/pop navigation.
 void openBubbleChat(
   BuildContext context,
   ValueWrapper<ChatSelection?> selection,
   RainbowBubble bubble,
 ) {
-  if (isWideLayout(context)) {
-    selection.value = BubbleSelection(bubble);
-  } else {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => BubbleChatPage(bubble: bubble)),
-    );
-  }
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(builder: (_) => BubbleTopicsPage(bubble: bubble)),
+  );
 }

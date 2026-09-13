@@ -23,8 +23,25 @@ import 'shared_files_page.dart';
 import 'theme_tokens.dart';
 
 class BubbleChatPage extends RearchConsumer {
-  const BubbleChatPage({super.key, required this.bubble});
+  const BubbleChatPage({
+    super.key,
+    required this.bubble,
+    this.thread = 'general',
+    this.topicSubject,
+    this.pendingSubject,
+  });
   final RainbowBubble bubble;
+
+  /// The XEP-0201 thread this view is scoped to; 'general' holds
+  /// untagged messages.
+  final String thread;
+
+  /// Display title for the topic; falls back to the bubble name.
+  final String? topicSubject;
+
+  /// Non-null only for a freshly created topic — its subject rides the
+  /// first message sent, then is cleared.
+  final String? pendingSubject;
 
   @override
   Widget build(BuildContext context, WidgetHandle use) {
@@ -50,19 +67,20 @@ class BubbleChatPage extends RearchConsumer {
       };
     }, [bubble.id]);
 
-    // Topic (Google-Groups style) state. Messages are grouped by their
-    // XEP-0201 thread; the default "general" topic holds untagged ones.
-    final (selectedThread, setSelectedThread) = use.state<String>('general');
-    final (pendingSubject, setPendingSubject) = use.state<String?>(null);
+    // This view is scoped to a single topic (XEP-0201 thread). The
+    // pending subject rides only the first message of a brand-new topic.
+    final (pendingSubject, setPendingSubject) = use.state<String?>(
+      this.pendingSubject,
+    );
 
-    // A controller scoped to the selected topic — mirrors only that
-    // thread's messages from the bubble's shared controller.
+    // A controller scoped to this topic — mirrors only this thread's
+    // messages from the bubble's shared controller.
     final topicController = use.memo(() => InMemoryChatController(), const []);
     use.effect(() => topicController.dispose, const []);
     use.effect(() {
       void sync() {
         final filtered = controller.messages
-            .where((m) => _threadOf(m) == selectedThread)
+            .where((m) => _threadOf(m) == thread)
             .toList();
         topicController.setMessages(filtered);
       }
@@ -70,7 +88,7 @@ class BubbleChatPage extends RearchConsumer {
       sync();
       final sub = controller.operationsStream.listen((_) => sync());
       return sub.cancel;
-    }, [controller, selectedThread]);
+    }, [controller, thread]);
 
     final currentUserId = me?.id ?? 'me';
     final selfName = me?.display ?? me?.loginEmail ?? 'Me';
@@ -196,9 +214,11 @@ class BubbleChatPage extends RearchConsumer {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(bubble.name),
-            if (bubble.topic != null)
-              Text(bubble.topic!, style: const TextStyle(fontSize: 12)),
+            Text(topicSubject ?? bubble.name),
+            Text(
+              topicSubject == null ? 'General' : bubble.name,
+              style: const TextStyle(fontSize: 12),
+            ),
           ],
         ),
         actions: [
@@ -227,36 +247,6 @@ class BubbleChatPage extends RearchConsumer {
       body: Column(
         children: [
           GroupCallBanner(bubble: bubble),
-          StreamBuilder<ChatOperation>(
-            stream: controller.operationsStream,
-            builder: (ctx, _) {
-              final topics = _deriveTopics(controller.messages);
-              if (!topics.any((t) => t.thread == selectedThread)) {
-                topics.add(
-                  _TopicInfo(
-                    thread: selectedThread,
-                    subject: pendingSubject ?? 'Topic',
-                  ),
-                );
-              }
-              return _TopicBar(
-                topics: topics,
-                selected: selectedThread,
-                onSelect: (t) {
-                  setPendingSubject(null);
-                  setSelectedThread(t);
-                },
-                onNewTopic: () async {
-                  final subject = await _promptNewTopic(context);
-                  if (subject == null || subject.trim().isEmpty) return;
-                  final id =
-                      'topic-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
-                  setPendingSubject(subject.trim());
-                  setSelectedThread(id);
-                },
-              );
-            },
-          ),
           ListenableBuilder(
             listenable: mamPageStateOf(threadKey),
             builder: (ctx, _) {
@@ -339,7 +329,7 @@ class BubbleChatPage extends RearchConsumer {
                       bubble,
                       trimmed,
                       replyToStanzaId: replyingTo?.id,
-                      thread: selectedThread,
+                      thread: thread,
                       subject: pendingSubject,
                     );
                     // The subject only rides the topic's first message.
@@ -368,31 +358,38 @@ Map<String, List<String>> _reactionsOf(Message m) => switch (m) {
 String _threadOf(Message m) => (m.metadata?['thread'] as String?) ?? 'general';
 
 /// Aggregated info for one topic in a bubble.
-class _TopicInfo {
-  _TopicInfo({required this.thread, required this.subject});
+class TopicInfo {
+  TopicInfo({required this.thread, required this.subject});
   final String thread;
   String subject;
   DateTime? lastAt;
+  String? lastText;
   int count = 0;
 }
 
 /// Groups a bubble's messages into topics by thread; "General" always
 /// leads. Subject comes from the message that opened the topic.
-List<_TopicInfo> _deriveTopics(List<Message> msgs) {
-  final map = <String, _TopicInfo>{
-    'general': _TopicInfo(thread: 'general', subject: 'General'),
+List<TopicInfo> deriveTopics(List<Message> msgs) {
+  final map = <String, TopicInfo>{
+    'general': TopicInfo(thread: 'general', subject: 'General'),
   };
   for (final m in msgs) {
     final thread = (m.metadata?['thread'] as String?) ?? 'general';
     final subject = m.metadata?['subject'] as String?;
     final t = map.putIfAbsent(
       thread,
-      () => _TopicInfo(thread: thread, subject: subject ?? 'Topic'),
+      () => TopicInfo(thread: thread, subject: subject ?? 'Topic'),
     );
     if (subject != null && subject.isNotEmpty) t.subject = subject;
     final at = m.createdAt;
     if (at != null && (t.lastAt == null || at.isAfter(t.lastAt!))) {
       t.lastAt = at;
+      t.lastText = switch (m) {
+        TextMessage tm => tm.text,
+        ImageMessage _ => '📷 Photo',
+        FileMessage _ => '📎 Attachment',
+        _ => null,
+      };
     }
     t.count++;
   }
@@ -409,7 +406,7 @@ List<_TopicInfo> _deriveTopics(List<Message> msgs) {
   return list;
 }
 
-Future<String?> _promptNewTopic(BuildContext context) {
+Future<String?> promptNewTopic(BuildContext context) {
   final ctrl = TextEditingController();
   return showDialog<String>(
     context: context,
@@ -433,57 +430,4 @@ Future<String?> _promptNewTopic(BuildContext context) {
       ],
     ),
   );
-}
-
-/// Horizontal topic selector shown above the bubble's message list.
-class _TopicBar extends StatelessWidget {
-  const _TopicBar({
-    required this.topics,
-    required this.selected,
-    required this.onSelect,
-    required this.onNewTopic,
-  });
-  final List<_TopicInfo> topics;
-  final String selected;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onNewTopic;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = phonePaletteOf(context);
-    return Container(
-      height: 46,
-      decoration: BoxDecoration(
-        color: palette.panelBg,
-        border: Border(bottom: BorderSide(color: palette.divider)),
-      ),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        children: [
-          for (final t in topics)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-              child: ChoiceChip(
-                label: Text(
-                  t.thread != 'general' && t.count > 0
-                      ? '${t.subject} · ${t.count}'
-                      : t.subject,
-                ),
-                selected: t.thread == selected,
-                onSelected: (_) => onSelect(t.thread),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 7),
-            child: ActionChip(
-              avatar: const Icon(Icons.add, size: 18),
-              label: const Text('New topic'),
-              onPressed: onNewTopic,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }

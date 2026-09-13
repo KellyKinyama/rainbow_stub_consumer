@@ -37,6 +37,10 @@ class BubbleDetailsPage extends RearchConsumer {
     };
 
     String peerDisplay(String userId) {
+      if (userId == me?.id) {
+        final self = me?.display ?? me?.loginEmail;
+        if (self != null && self.isNotEmpty) return self;
+      }
       for (final r in roster) {
         if (r.peer.id == userId) return r.peer.display;
       }

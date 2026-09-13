@@ -17,7 +17,11 @@ import 'responsive.dart';
 class BubblesTab extends RearchConsumer {
   const BubblesTab({super.key});
 
-  Future<void> _createBubble(BuildContext context, ChatActions actions) async {
+  Future<void> _createBubble(
+    BuildContext context,
+    ChatActions actions,
+    BubblesRefresher refresher,
+  ) async {
     final controller = TextEditingController();
     var busy = false;
     final ok = await showDialog<bool>(
@@ -46,6 +50,7 @@ class BubblesTab extends RearchConsumer {
                       setState(() => busy = true);
                       try {
                         await actions.createBubble(name);
+                        refresher.bump();
                         if (dialogCtx.mounted) {
                           Navigator.of(dialogCtx).pop(true);
                         }
@@ -135,7 +140,7 @@ class BubblesTab extends RearchConsumer {
         child: body,
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _createBubble(context, actions),
+        onPressed: () => _createBubble(context, actions, refresher),
         child: const Icon(Icons.add),
       ),
     );
