@@ -168,6 +168,8 @@ class ChatMessage {
     this.reactions,
     this.editedAt,
     this.pendingAck = false,
+    this.thread,
+    this.subject,
   });
 
   final String id;
@@ -185,6 +187,12 @@ class ChatMessage {
   /// sent-ack; consumed by `_toChatUiMessage` to render the "sending"
   /// status.
   final bool pendingAck;
+
+  /// Group topic (XEP-0201 thread id) this message belongs to.
+  final String? thread;
+
+  /// Topic title, set on the message that opens a topic.
+  final String? subject;
 }
 
 /// Metadata for an attached file returned by the stub's file endpoint.

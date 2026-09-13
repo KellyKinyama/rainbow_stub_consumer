@@ -73,7 +73,7 @@ class XmppIqError implements Exception {
         if (c.localName == 'text') {
           text = c.innerText;
         } else {
-          condition = c.localName ?? condition;
+          condition = c.localName;
         }
       }
     }
@@ -107,6 +107,8 @@ class XmppChatMessage extends XmppEvent {
     required this.isGroupChat,
     this.attachment,
     this.replyToStanzaId,
+    this.thread,
+    this.subject,
   });
   final String from;
   final String to;
@@ -115,6 +117,12 @@ class XmppChatMessage extends XmppEvent {
   final bool isGroupChat;
   final XmppAttachment? attachment;
   final String? replyToStanzaId;
+
+  /// XEP-0201 thread id — the group topic this message belongs to.
+  final String? thread;
+
+  /// Topic title carried on the message that opens a topic.
+  final String? subject;
 }
 
 class XmppMamMessage extends XmppEvent {
@@ -127,6 +135,8 @@ class XmppMamMessage extends XmppEvent {
     required this.isGroupChat,
     this.attachment,
     this.replyToStanzaId,
+    this.thread,
+    this.subject,
   });
   final String from;
   final String to;
@@ -136,6 +146,8 @@ class XmppMamMessage extends XmppEvent {
   final bool isGroupChat;
   final XmppAttachment? attachment;
   final String? replyToStanzaId;
+  final String? thread;
+  final String? subject;
 }
 
 /// File payload attached to an XMPP message via the `urn:rainbow:file:1`
@@ -682,7 +694,7 @@ class RainbowXmppClient {
     if (type == 'error') {
       final kind = el.localName;
       if (kind == 'iq' || kind == 'message' || kind == 'presence') {
-        _events.add(_parseStanzaError(kind!, el));
+        _events.add(_parseStanzaError(kind, el));
         return;
       }
     }
@@ -703,7 +715,7 @@ class RainbowXmppClient {
       if (c.localName == 'text') {
         text = c.innerText;
       } else {
-        condition = c.localName ?? condition;
+        condition = c.localName;
       }
     }
     return XmppStreamError(condition: condition, text: text);
@@ -720,7 +732,7 @@ class RainbowXmppClient {
         if (c.localName == 'text') {
           text = c.innerText;
         } else {
-          condition = c.localName ?? condition;
+          condition = c.localName;
         }
       }
     }
@@ -1006,6 +1018,8 @@ class RainbowXmppClient {
         isGroupChat: type == 'groupchat',
         attachment: _readAttachment(el),
         replyToStanzaId: _readReplyTargetId(el),
+        thread: el.getElement('thread')?.innerText.trim(),
+        subject: el.getElement('subject')?.innerText.trim(),
       ),
     );
   }
@@ -1068,6 +1082,8 @@ class RainbowXmppClient {
       isGroupChat: inner.getAttribute('type') == 'groupchat',
       attachment: _readAttachment(inner),
       replyToStanzaId: _readReplyTargetId(inner),
+      thread: inner.getElement('thread')?.innerText.trim(),
+      subject: inner.getElement('subject')?.innerText.trim(),
     );
     _events.add(ev);
   }
@@ -1146,12 +1162,21 @@ class RainbowXmppClient {
     String? id,
     XmppAttachment? attachment,
     String? replyToStanzaId,
+    String? thread,
+    String? subject,
   }) {
     final stanzaId =
         id ?? DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    final threadXml = (thread != null && thread.isNotEmpty)
+        ? '<thread>${_esc(thread)}</thread>'
+        : '';
+    final subjectXml = (subject != null && subject.isNotEmpty)
+        ? '<subject>${_esc(subject)}</subject>'
+        : '';
     _send(
       '<message id="$stanzaId" to="$roomJid" type="groupchat">'
       '<body>${_esc(body)}</body>'
+      '$threadXml$subjectXml'
       '${_renderFile(attachment)}'
       '${_renderReply(replyToStanzaId)}'
       '</message>',

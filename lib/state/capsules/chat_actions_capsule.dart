@@ -44,6 +44,8 @@ class ChatActions {
     RainbowBubble bubble,
     String body, {
     String? replyToStanzaId,
+    String? thread,
+    String? subject,
   })
   sendGroup;
   final void Function(RainbowBubble bubble) joinMuc;
@@ -204,7 +206,13 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     );
   }
 
-  void sendGroup(RainbowBubble bubble, String body, {String? replyToStanzaId}) {
+  void sendGroup(
+    RainbowBubble bubble,
+    String body, {
+    String? replyToStanzaId,
+    String? thread,
+    String? subject,
+  }) {
     final key = bubbleThreadKey(bubble);
     final stanzaId = _newStanzaId();
     xmpp.sendGroupChat(
@@ -212,6 +220,8 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
       body: body,
       id: stanzaId,
       replyToStanzaId: replyToStanzaId,
+      thread: thread,
+      subject: subject,
     );
     if (!xmpp.isConnected && auth.me != null) {
       unawaited(
@@ -238,6 +248,8 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
         sentAt: DateTime.now(),
         isMine: true,
         replyToStanzaId: replyToStanzaId,
+        thread: thread,
+        subject: subject,
       ),
     );
   }

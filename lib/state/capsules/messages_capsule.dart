@@ -251,6 +251,8 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   isMine: isMine,
                   attachment: _fromXmpp(e.attachment),
                   replyToStanzaId: e.replyToStanzaId,
+                  thread: e.thread,
+                  subject: e.subject,
                 ),
                 isGroupChat: e.isGroupChat,
               );
@@ -297,6 +299,8 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
                   isMine: isMine,
                   attachment: _fromXmpp(e.attachment),
                   replyToStanzaId: e.replyToStanzaId,
+                  thread: e.thread,
+                  subject: e.subject,
                 ),
                 isGroupChat: e.isGroupChat,
                 index: state.mamInsertIndex,
@@ -741,6 +745,14 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
   final MessageStatus? status = cm.isMine && cm.pendingAck
       ? MessageStatus.sending
       : null;
+  // Stash the group topic so the bubble UI can group messages by thread.
+  final Map<String, dynamic>? metadata =
+      (cm.thread != null || cm.subject != null)
+      ? {
+          if (cm.thread != null) 'thread': cm.thread,
+          if (cm.subject != null) 'subject': cm.subject,
+        }
+      : null;
   if (a != null && a.isImage) {
     return Message.image(
       id: cm.id,
@@ -753,6 +765,7 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
       size: a.size,
       replyToMessageId: cm.replyToStanzaId,
       reactions: cm.reactions,
+      metadata: metadata,
     );
   }
   if (a != null) {
@@ -768,6 +781,7 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
       size: a.size,
       replyToMessageId: cm.replyToStanzaId,
       reactions: cm.reactions,
+      metadata: metadata,
     );
   }
   return Message.text(
@@ -780,6 +794,7 @@ Message _toChatUiMessage(ChatMessage cm, String authorId) {
     replyToMessageId: cm.replyToStanzaId,
     reactions: cm.reactions,
     editedAt: cm.editedAt,
+    metadata: metadata,
   );
 }
 
