@@ -15,6 +15,7 @@ import 'bubble_details_page.dart';
 import 'chat_widgets.dart';
 import 'group_call_banner.dart';
 import 'phone_round_button.dart';
+import 'responsive.dart';
 import 'shared_files_page.dart';
 import 'theme_tokens.dart';
 
@@ -44,28 +45,62 @@ class BubbleTopicsPage extends RearchConsumer {
       };
     }, [bubble.id]);
 
-    void openTopic(TopicInfo t, {bool isNew = false}) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => BubbleChatPage(
-            bubble: bubble,
-            thread: t.thread,
-            topicSubject: t.subject,
-            pendingSubject: isNew ? t.subject : null,
-          ),
-        ),
-      );
-    }
-
-    Future<void> newTopic() async {
-      final subject = await promptNewTopic(context);
-      if (subject == null || subject.trim().isEmpty) return;
-      final id =
-          'topic-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
-      openTopic(TopicInfo(thread: id, subject: subject.trim()), isNew: true);
-    }
+    // Selected topic (wide layout only). On narrow layouts tapping
+    // pushes a full-screen chat instead.
+    final (sel, setSel) = use
+        .state<({String thread, String subject, String? pending})?>(null);
+    final effective =
+        sel ?? (thread: 'general', subject: 'General', pending: null);
 
     final palette = phonePaletteOf(context);
+
+    // FAB lives inside the topics column so it never overlaps the
+    // composer's send button in the wide-layout chat pane.
+    Widget topicsColumn({
+      required String? selectedThread,
+      required void Function(TopicInfo) onOpenTopic,
+      required VoidCallback onNewTopic,
+    }) => Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          ListenableBuilder(
+            listenable: mamPageStateOf(threadKey),
+            builder: (ctx, _) {
+              final s = mamPageStateOf(threadKey);
+              return LoadOlderChip(
+                canLoadMore: s.canLoadMore,
+                isLoading: s.isLoading,
+                onTap: () => actions.loadOlder(threadKey),
+              );
+            },
+          ),
+          Expanded(
+            child: StreamBuilder<ChatOperation>(
+              stream: controller.operationsStream,
+              builder: (ctx, _) {
+                final topics = deriveTopics(controller.messages);
+                return ListView.separated(
+                  itemCount: topics.length,
+                  separatorBuilder: (_, _) =>
+                      Divider(height: 1, color: palette.divider),
+                  itemBuilder: (_, i) => _TopicTile(
+                    topic: topics[i],
+                    selected: topics[i].thread == selectedThread,
+                    onTap: () => onOpenTopic(topics[i]),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: onNewTopic,
+        icon: const Icon(Icons.add_comment_outlined),
+        label: const Text('New topic'),
+      ),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -103,49 +138,87 @@ class BubbleTopicsPage extends RearchConsumer {
       body: Column(
         children: [
           GroupCallBanner(bubble: bubble),
-          ListenableBuilder(
-            listenable: mamPageStateOf(threadKey),
-            builder: (ctx, _) {
-              final s = mamPageStateOf(threadKey);
-              return LoadOlderChip(
-                canLoadMore: s.canLoadMore,
-                isLoading: s.isLoading,
-                onTap: () => actions.loadOlder(threadKey),
-              );
-            },
-          ),
           Expanded(
-            child: StreamBuilder<ChatOperation>(
-              stream: controller.operationsStream,
-              builder: (ctx, _) {
-                final topics = deriveTopics(controller.messages);
-                return ListView.separated(
-                  itemCount: topics.length,
-                  separatorBuilder: (_, _) =>
-                      Divider(height: 1, color: palette.divider),
-                  itemBuilder: (_, i) => _TopicTile(
-                    topic: topics[i],
-                    onTap: () => openTopic(topics[i]),
-                  ),
+            // LayoutBuilder (not MediaQuery) so the split reflows live as
+            // the window resizes, matching the 1:1 master-detail.
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                final wide = constraints.maxWidth >= kWideLayoutBreakpoint;
+
+                void openTopic(TopicInfo t, {bool isNew = false}) {
+                  final next = (
+                    thread: t.thread,
+                    subject: t.subject,
+                    pending: isNew ? t.subject : null,
+                  );
+                  if (wide) {
+                    setSel(next);
+                  } else {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => BubbleChatPage(
+                          bubble: bubble,
+                          thread: next.thread,
+                          topicSubject: next.subject,
+                          pendingSubject: next.pending,
+                        ),
+                      ),
+                    );
+                  }
+                }
+
+                Future<void> newTopic() async {
+                  final subject = await promptNewTopic(context);
+                  if (subject == null || subject.trim().isEmpty) return;
+                  final id =
+                      'topic-${DateTime.now().microsecondsSinceEpoch.toRadixString(16)}';
+                  openTopic(
+                    TopicInfo(thread: id, subject: subject.trim()),
+                    isNew: true,
+                  );
+                }
+
+                final topicsPane = topicsColumn(
+                  selectedThread: wide ? effective.thread : null,
+                  onOpenTopic: (t) => openTopic(t),
+                  onNewTopic: newTopic,
+                );
+
+                if (!wide) return topicsPane;
+                return Row(
+                  children: [
+                    SizedBox(width: 340, child: topicsPane),
+                    const VerticalDivider(width: 1),
+                    Expanded(
+                      child: BubbleChatPage(
+                        key: ValueKey('${bubble.id}:${effective.thread}'),
+                        bubble: bubble,
+                        thread: effective.thread,
+                        topicSubject: effective.subject,
+                        pendingSubject: effective.pending,
+                        embedded: true,
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: newTopic,
-        icon: const Icon(Icons.add_comment_outlined),
-        label: const Text('New topic'),
-      ),
     );
   }
 }
 
 class _TopicTile extends StatelessWidget {
-  const _TopicTile({required this.topic, required this.onTap});
+  const _TopicTile({
+    required this.topic,
+    required this.onTap,
+    this.selected = false,
+  });
   final TopicInfo topic;
   final VoidCallback onTap;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +229,8 @@ class _TopicTile extends StatelessWidget {
         ? topic.lastText!.trim()
         : (topic.count == 0 ? 'No messages yet' : '${topic.count} messages');
     return ListTile(
+      selected: selected,
+      selectedTileColor: palette.rowSelected,
       leading: CircleAvatar(
         backgroundColor: palette.avatarBg,
         child: Icon(

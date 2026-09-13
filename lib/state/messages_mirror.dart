@@ -15,6 +15,8 @@ class StoredThreadMessage {
     required this.sentAt,
     required this.isMine,
     this.replyToStanzaId,
+    this.thread,
+    this.subject,
   });
 
   final String id;
@@ -24,6 +26,8 @@ class StoredThreadMessage {
   final DateTime sentAt;
   final bool isMine;
   final String? replyToStanzaId;
+  final String? thread;
+  final String? subject;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -33,6 +37,8 @@ class StoredThreadMessage {
     'sentAt': sentAt.toIso8601String(),
     'isMine': isMine,
     if (replyToStanzaId != null) 'replyToStanzaId': replyToStanzaId,
+    if (thread != null) 'thread': thread,
+    if (subject != null) 'subject': subject,
   };
 
   static StoredThreadMessage? fromJson(Object? raw) {
@@ -50,6 +56,8 @@ class StoredThreadMessage {
       sentAt: at,
       isMine: (raw['isMine'] as bool?) ?? false,
       replyToStanzaId: raw['replyToStanzaId'] as String?,
+      thread: raw['thread'] as String?,
+      subject: raw['subject'] as String?,
     );
   }
 }
@@ -69,9 +77,11 @@ class SharedPrefsMessagesMirror implements MessagesMirror {
 
   static const int maxPerThread = 100;
 
+  // v2: added group topic (thread/subject). Bumping the key prefix
+  // orphans older thread-less caches so history re-hydrates from MAM.
   String _threadKey(String userId, String threadKey) =>
-      'msgs.$userId.$threadKey';
-  String _indexKey(String userId) => 'msg_threads.$userId';
+      'msgs2.$userId.$threadKey';
+  String _indexKey(String userId) => 'msg_threads2.$userId';
 
   @override
   Future<List<StoredThreadMessage>> read(

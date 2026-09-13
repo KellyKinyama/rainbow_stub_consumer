@@ -693,6 +693,8 @@ void _bufferForMirror({required String threadKey, required ChatMessage cm}) {
     sentAt: cm.sentAt,
     isMine: cm.isMine,
     replyToStanzaId: cm.replyToStanzaId,
+    thread: cm.thread,
+    subject: cm.subject,
   );
 }
 
@@ -725,6 +727,8 @@ Future<void> _hydrateFromMirror({
         sentAt: s.sentAt,
         isMine: s.isMine,
         replyToStanzaId: s.replyToStanzaId,
+        thread: s.thread,
+        subject: s.subject,
       ),
       authorId,
     );

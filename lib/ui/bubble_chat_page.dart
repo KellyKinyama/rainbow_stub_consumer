@@ -29,6 +29,7 @@ class BubbleChatPage extends RearchConsumer {
     this.thread = 'general',
     this.topicSubject,
     this.pendingSubject,
+    this.embedded = false,
   });
   final RainbowBubble bubble;
 
@@ -42,6 +43,10 @@ class BubbleChatPage extends RearchConsumer {
   /// Non-null only for a freshly created topic — its subject rides the
   /// first message sent, then is cleared.
   final String? pendingSubject;
+
+  /// When shown inside a two-pane group layout, suppresses the AppBar
+  /// back button (the surrounding page owns navigation).
+  final bool embedded;
 
   @override
   Widget build(BuildContext context, WidgetHandle use) {
@@ -210,6 +215,7 @@ class BubbleChatPage extends RearchConsumer {
     return Scaffold(
       backgroundColor: phonePaletteOf(context).chatWallpaper,
       appBar: AppBar(
+        automaticallyImplyLeading: !embedded,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
