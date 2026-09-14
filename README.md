@@ -1,7 +1,7 @@
-# rainbow_stub_consumer
+# chatstub_consumer
 
-Flutter reference client for the [rainbow-stub](../../dart/rainbow-stub)
-server. Demonstrates a full Rainbow-style CPaaS UX — 1:1 + group chat,
+Flutter reference client for the [chatstub-server](../../dart/chatstub-server)
+server. Demonstrates a full-featured CPaaS-style UX — 1:1 + group chat,
 reactions, edits, retracts, MAM pagination, file + camera attachments,
 Jingle-signaled 1:1 audio/video calls, and ion-sfu group calls — talking
 to the hand-rolled Dart stub over REST + XMPP-over-WebSocket + JSON-RPC.
@@ -17,11 +17,11 @@ Built on:
 
 ```powershell
 # Terminal 1 — start the stub (see the stub's README for TLS vs HTTP options)
-cd c:\www\dart\rainbow-stub
+cd c:\www\dart\chatstub-server
 dart run bin/server.dart
 
 # Terminal 2 — run this app pointing at the default TLS stub
-cd c:\www\flutter\rainbow_stub_consumer
+cd c:\www\flutter\chatstub_consumer
 flutter pub get
 flutter run -d windows           # or: flutter run -d chrome
 ```
@@ -43,6 +43,62 @@ flutter run -d <device> `
 Use `10.0.2.2` as `STUB_HOST` for the Android emulator. `SFU_URL` is
 optional — group-call UI stays hidden when it's unset. Real device /
 emulator smoke runbook: [docs/live-smoke-test.md](docs/live-smoke-test.md).
+
+## Production build & deploy
+
+The production stub is served over HTTPS at
+`https://bizprozmco.com:8443` (nginx TLS-terminated → local Dart on
+`127.0.0.1:8444`), and the web client at `https://bizprozmco.com/app/`.
+The prod endpoint is baked into the build via `--dart-define`, so every
+release build must pass the same three defines:
+
+```powershell
+--dart-define=STUB_SCHEME=https `
+--dart-define=STUB_HOST=bizprozmco.com `
+--dart-define=STUB_PORT=8443
+```
+
+### Web (→ https://bizprozmco.com/app/)
+
+```powershell
+cd c:\www\flutter\chatstub_consumer
+
+# 1. Build (base-href must match the /app/ subpath)
+flutter build web --release --base-href /app/ --no-web-resources-cdn `
+  --dart-define=STUB_SCHEME=https `
+  --dart-define=STUB_HOST=bizprozmco.com `
+  --dart-define=STUB_PORT=8443
+
+# 2. Package build\web → deploy\chatstub-web.tar.gz
+tar -czf deploy\chatstub-web.tar.gz -C build\web .
+
+# 3. Upload + install (nginx docroot /var/www/chatstub, key auth)
+$key="$env:USERPROFILE\.ssh\chatstub_deploy"
+scp -i $key deploy\chatstub-web.tar.gz root@bizprozmco.com:/tmp/
+ssh -i $key root@bizprozmco.com "bash /tmp/deploy-nginx.sh /tmp/chatstub-web.tar.gz /var/www/chatstub /app"
+```
+
+The `deploy/` scripts ([deploy/deploy-nginx.sh](deploy/deploy-nginx.sh))
+back up the nginx config, extract the build, and reload nginx. After
+deploying, **hard-refresh** the browser (the PWA service worker caches
+the old build).
+
+### Android release APK
+
+```powershell
+cd c:\www\flutter\chatstub_consumer
+flutter build apk --release `
+  --dart-define=STUB_SCHEME=https `
+  --dart-define=STUB_HOST=bizprozmco.com `
+  --dart-define=STUB_PORT=8443
+```
+
+Output: `build\app\outputs\flutter-apk\app-release.apk` (universal, all
+ABIs). Add `--split-per-abi` for smaller per-device APKs. The release
+build type is signed with the debug key (see
+`android/app/build.gradle.kts`) — fine for sideload testing, not
+Play-Store-ready. SIP dialer credentials are entered at runtime; only
+the chat/stub endpoint is baked in.
 
 ## Testing
 
@@ -108,7 +164,7 @@ reachable at the configured base URL.
   session logs
 
 Full setup, TLS trust, and endpoint reference for the backend:
-**[c:\www\dart\rainbow-stub\RUNBOOK.md](../../dart/rainbow-stub/RUNBOOK.md)**.
+**[c:\www\dart\chatstub-server\RUNBOOK.md](../../dart/chatstub-server/RUNBOOK.md)**.
 
 ## Layout
 

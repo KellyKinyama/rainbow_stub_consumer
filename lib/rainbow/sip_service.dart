@@ -171,7 +171,18 @@ class SipService extends ChangeNotifier implements SipUaHelperListener {
   }
 
   void hangup() {
-    activeCall?.hangup();
+    final c = activeCall;
+    if (c == null) return;
+    if (callState == CallStateEnum.ENDED) return;
+    // sip_ua's Call.hangup() iterates peerConnection.getLocalStreams()/
+    // getRemoteStreams() and `return`s on the first null entry — which is
+    // exactly what flutter_webrtc returns on web — so it bails before
+    // sending BYE. Terminate the RTCSession directly to guarantee teardown.
+    try {
+      c.session.terminate();
+    } catch (e) {
+      lastError = e.toString();
+    }
   }
 
   void sendDtmf(String tone) {
