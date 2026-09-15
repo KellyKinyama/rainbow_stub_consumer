@@ -10,6 +10,7 @@ import '../state/capsules/auth_state_capsule.dart';
 import '../state/capsules/chat_actions_capsule.dart';
 import '../state/capsules/config_capsule.dart';
 import '../state/capsules/messages_capsule.dart';
+import '../state/capsules/room_subject_capsule.dart';
 import '../state/capsules/roster_capsule.dart';
 import '../state/capsules/active_thread_capsule.dart';
 import '../state/capsules/unread_capsule.dart';
@@ -22,6 +23,7 @@ import 'forward_picker.dart';
 import 'group_call_banner.dart';
 import 'phone_round_button.dart';
 import 'room_occupants_sheet.dart';
+import 'room_subject_banner.dart';
 import 'shared_files_page.dart';
 import 'theme_tokens.dart';
 
@@ -61,6 +63,7 @@ class BubbleChatPage extends RearchConsumer {
     final controller = use(chatControllerCapsule(threadKey));
     final unread = use(unreadCapsule);
     final activeThread = use(activeThreadCapsule);
+    final roomSubject = use(roomSubjectCapsule)[threadKey];
     final input = use.textEditingController();
     final (replyingTo, setReplyingTo) = use.state<Message?>(null);
     final (editing, setEditing) = use.state<TextMessage?>(null);
@@ -268,6 +271,8 @@ class BubbleChatPage extends RearchConsumer {
         child: Column(
           children: [
             GroupCallBanner(bubble: bubble),
+            if (roomSubject != null && roomSubject.isNotEmpty)
+              RoomSubjectBanner(subject: roomSubject),
             ListenableBuilder(
               listenable: mamPageStateOf(threadKey),
               builder: (ctx, _) {

@@ -197,6 +197,19 @@ class XmppMucOccupant extends XmppEvent {
   final String role;
 }
 
+/// XEP-0045 §7.2.14 room subject — a body-less groupchat `<subject>` from
+/// the room (delivered on join and whenever it changes).
+class XmppRoomSubject extends XmppEvent {
+  const XmppRoomSubject({
+    required this.roomBareJid,
+    required this.subject,
+    this.fromNick = '',
+  });
+  final String roomBareJid;
+  final String subject;
+  final String fromNick;
+}
+
 /// RFC 6121 §3 inbound presence subscription stanza — one of
 /// `subscribe` / `subscribed` / `unsubscribe` / `unsubscribed`. UI can
 /// prompt to approve/deny an inbound `subscribe`, or refresh the roster
@@ -1042,6 +1055,24 @@ class RainbowXmppClient {
     // Historically emitted as `<sent xmlns="urn:xmpp:sent-ack:1"/>`;
     // now derived from XEP-0198 `<a h="N"/>` in `_handleSmAck`. The
     // legacy detection is gone.
+
+    // XEP-0045 §7.2.14 room subject — a body-less groupchat `<subject>`.
+    // Topic-opening messages carry a body too, so they are not caught here.
+    final subjectEl = el.getElement('subject');
+    if (subjectEl != null &&
+        el.getElement('body') == null &&
+        el.getAttribute('type') == 'groupchat') {
+      _events.add(
+        XmppRoomSubject(
+          roomBareJid: fromBare,
+          subject: subjectEl.innerText,
+          fromNick: from.contains('/')
+              ? from.substring(from.indexOf('/') + 1)
+              : '',
+        ),
+      );
+      return;
+    }
 
     final body = el.getElement('body')?.innerText;
     if (body == null) return;
