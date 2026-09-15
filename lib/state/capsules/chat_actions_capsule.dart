@@ -35,6 +35,7 @@ class ChatActions {
     required this.editGroup,
     required this.retractPeer,
     required this.retractGroup,
+    required this.moderateGroup,
     required this.loadOlder,
   });
 
@@ -113,6 +114,12 @@ class ChatActions {
   retractPeer;
   final void Function(RainbowBubble bubble, {required String targetStanzaId})
   retractGroup;
+  final void Function(
+    RainbowBubble bubble, {
+    required String targetStanzaId,
+    String? reason,
+  })
+  moderateGroup;
 
   /// Fires a XEP-0313 `<before>` anchored MAM query for older messages
   /// on `threadKey`. Returns `true` if a request was dispatched.
@@ -491,6 +498,20 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     applyRetractLocally(threadKey: key, targetStanzaId: targetStanzaId);
   }
 
+  // XEP-0425 moderation — owner/moderator removes another member's MUC
+  // message. The stub fans the tombstone back to us, so no local apply.
+  void moderateGroup(
+    RainbowBubble bubble, {
+    required String targetStanzaId,
+    String? reason,
+  }) {
+    xmpp.sendModeration(
+      roomBareJid: bubbleThreadKey(bubble),
+      targetStanzaId: targetStanzaId,
+      reason: reason,
+    );
+  }
+
   return ChatActions(
     sendPeer: sendPeer,
     sendGroup: sendGroup,
@@ -512,6 +533,7 @@ ChatActions chatActionsCapsule(CapsuleHandle use) {
     editGroup: editGroup,
     retractPeer: retractPeer,
     retractGroup: retractGroup,
+    moderateGroup: moderateGroup,
     loadOlder: (threadKey) => loadOlderMessages(xmpp, threadKey),
   );
 }

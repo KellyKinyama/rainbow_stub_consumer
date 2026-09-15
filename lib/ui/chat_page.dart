@@ -20,6 +20,8 @@ import '../state/capsules/xmpp_capsule.dart';
 import '../state/models/presence.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
+import 'chat_wallpaper.dart';
+import 'emoji_picker.dart';
 import 'forward_picker.dart';
 import 'phone_round_button.dart';
 import 'shared_files_page.dart';
@@ -285,119 +287,126 @@ class ChatPage extends RearchConsumer {
           const SizedBox(width: 4),
         ],
       ),
-      body: Column(
-        children: [
-          if (peerIsTyping)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const IsTypingIndicator(),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${peer.display} is typing…',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ListenableBuilder(
-            listenable: mamPageStateOf(threadKey),
-            builder: (ctx, _) {
-              final s = mamPageStateOf(threadKey);
-              return LoadOlderChip(
-                canLoadMore: s.canLoadMore,
-                isLoading: s.isLoading,
-                onTap: () => actions.loadOlder(threadKey),
-              );
-            },
-          ),
-          Expanded(
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (n) {
-                final m = n.metrics;
-                if (m.axis == Axis.vertical &&
-                    m.pixels >= m.maxScrollExtent - 200) {
-                  actions.loadOlder(threadKey);
-                }
-                return false;
-              },
-              child: Chat(
-                currentUserId: currentUserId,
-                resolveUser: resolveUser,
-                chatController: controller,
-                builders: Builders(
-                  chatAnimatedListBuilder: (context, itemBuilder) =>
-                      ChatAnimatedList(
-                        itemBuilder: itemBuilder,
-                        scrollController: scrollCtrl,
-                      ),
-                  composerBuilder: (ctx) =>
-                      Composer(textEditingController: input),
-                  textMessageBuilder:
-                      (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                          wrapChatBubble(
-                            message: msg,
-                            isSentByMe: isSentByMe,
-                            currentUserId: currentUserId,
-                            replyTarget: lookupTarget(msg.replyToMessageId),
-                            reactions: msg.reactions,
-                            onReactionTap: (e) => toggleMyReaction(msg, e),
-                            child: PhoneTextBubble(
-                              message: msg,
-                              isSentByMe: isSentByMe,
-                            ),
-                          ),
-                  imageMessageBuilder:
-                      (ctx, msg, index, {required isSentByMe, groupStatus}) =>
-                          wrapChatBubble(
-                            message: msg,
-                            isSentByMe: isSentByMe,
-                            currentUserId: currentUserId,
-                            replyTarget: lookupTarget(msg.replyToMessageId),
-                            reactions: msg.reactions,
-                            onReactionTap: (e) => toggleMyReaction(msg, e),
-                            child: InlineImageBubble(
-                              message: msg,
-                              isSentByMe: isSentByMe,
-                            ),
-                          ),
+      body: ChatWallpaper(
+        child: Column(
+          children: [
+            if (peerIsTyping)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
                 ),
-                onAttachmentTap: () async {
-                  final picked = await showAttachmentPicker(context);
-                  if (picked == null) return;
-                  await actions.sendPeerFile(
-                    peer,
-                    bytes: picked.bytes,
-                    fileName: picked.fileName,
-                    mimeType: picked.mimeType,
-                  );
-                },
-                onMessageLongPress: onLongPress,
-                onMessageSend: (text) {
-                  final trimmed = text.trim();
-                  if (trimmed.isEmpty) return;
-                  if (editing != null) {
-                    actions.editPeer(
-                      peer,
-                      originalStanzaId: editing.id,
-                      newBody: trimmed,
-                    );
-                  } else {
-                    actions.sendPeer(
-                      peer,
-                      trimmed,
-                      replyToStanzaId: replyingTo?.id,
-                    );
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const IsTypingIndicator(),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${peer.display} is typing…',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ListenableBuilder(
+              listenable: mamPageStateOf(threadKey),
+              builder: (ctx, _) {
+                final s = mamPageStateOf(threadKey);
+                return LoadOlderChip(
+                  canLoadMore: s.canLoadMore,
+                  isLoading: s.isLoading,
+                  onTap: () => actions.loadOlder(threadKey),
+                );
+              },
+            ),
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (n) {
+                  final m = n.metrics;
+                  if (m.axis == Axis.vertical &&
+                      m.pixels >= m.maxScrollExtent - 200) {
+                    actions.loadOlder(threadKey);
                   }
-                  clearBanner();
+                  return false;
                 },
+                child: Chat(
+                  currentUserId: currentUserId,
+                  resolveUser: resolveUser,
+                  chatController: controller,
+                  builders: Builders(
+                    chatAnimatedListBuilder: (context, itemBuilder) =>
+                        ChatAnimatedList(
+                          itemBuilder: itemBuilder,
+                          scrollController: scrollCtrl,
+                        ),
+                    composerBuilder: (ctx) => Composer(
+                      textEditingController: input,
+                      topWidget: EmojiComposerButton(controller: input),
+                    ),
+                    textMessageBuilder:
+                        (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                            wrapChatBubble(
+                              message: msg,
+                              isSentByMe: isSentByMe,
+                              currentUserId: currentUserId,
+                              replyTarget: lookupTarget(msg.replyToMessageId),
+                              reactions: msg.reactions,
+                              onReactionTap: (e) => toggleMyReaction(msg, e),
+                              child: PhoneTextBubble(
+                                message: msg,
+                                isSentByMe: isSentByMe,
+                              ),
+                            ),
+                    imageMessageBuilder:
+                        (ctx, msg, index, {required isSentByMe, groupStatus}) =>
+                            wrapChatBubble(
+                              message: msg,
+                              isSentByMe: isSentByMe,
+                              currentUserId: currentUserId,
+                              replyTarget: lookupTarget(msg.replyToMessageId),
+                              reactions: msg.reactions,
+                              onReactionTap: (e) => toggleMyReaction(msg, e),
+                              child: InlineImageBubble(
+                                message: msg,
+                                isSentByMe: isSentByMe,
+                              ),
+                            ),
+                  ),
+                  onAttachmentTap: () async {
+                    final picked = await showAttachmentPicker(context);
+                    if (picked == null) return;
+                    await actions.sendPeerFile(
+                      peer,
+                      bytes: picked.bytes,
+                      fileName: picked.fileName,
+                      mimeType: picked.mimeType,
+                    );
+                  },
+                  onMessageLongPress: onLongPress,
+                  onMessageSend: (text) {
+                    final trimmed = text.trim();
+                    if (trimmed.isEmpty) return;
+                    if (editing != null) {
+                      actions.editPeer(
+                        peer,
+                        originalStanzaId: editing.id,
+                        newBody: trimmed,
+                      );
+                    } else {
+                      actions.sendPeer(
+                        peer,
+                        trimmed,
+                        replyToStanzaId: replyingTo?.id,
+                      );
+                    }
+                    clearBanner();
+                  },
+                ),
               ),
             ),
-          ),
-          if (banner != null) banner,
-        ],
+            if (banner != null) banner,
+          ],
+        ),
       ),
     );
   }

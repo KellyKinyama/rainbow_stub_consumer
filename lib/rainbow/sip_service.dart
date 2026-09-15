@@ -105,6 +105,7 @@ class SipService extends ChangeNotifier implements SipUaHelperListener {
   CallStateEnum callState = CallStateEnum.NONE;
   MediaStream? remoteStream;
   bool muted = false;
+  bool held = false;
   String? lastError;
 
   bool get isRegistered => registerState == RegistrationStateEnum.REGISTERED;
@@ -170,7 +171,18 @@ class SipService extends ChangeNotifier implements SipUaHelperListener {
   }
 
   void hangup() {
-    activeCall?.hangup();
+    final c = activeCall;
+    if (c == null) return;
+    if (callState == CallStateEnum.ENDED) return;
+    // sip_ua's Call.hangup() iterates peerConnection.getLocalStreams()/
+    // getRemoteStreams() and `return`s on the first null entry — which is
+    // exactly what flutter_webrtc returns on web — so it bails before
+    // sending BYE. Terminate the RTCSession directly to guarantee teardown.
+    try {
+      c.session.terminate();
+    } catch (e) {
+      lastError = e.toString();
+    }
   }
 
   void sendDtmf(String tone) {
@@ -189,11 +201,24 @@ class SipService extends ChangeNotifier implements SipUaHelperListener {
     notifyListeners();
   }
 
+  void toggleHold() {
+    final c = activeCall;
+    if (c == null) return;
+    if (held) {
+      c.unhold();
+    } else {
+      c.hold();
+    }
+    held = !held;
+    notifyListeners();
+  }
+
   void _resetCall() {
     activeCall = null;
     callState = CallStateEnum.NONE;
     remoteStream = null;
     muted = false;
+    held = false;
   }
 
   // --- SipUaHelperListener ---

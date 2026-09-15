@@ -13,8 +13,10 @@ import 'package:rainbow_stub_consumer/state/capsules/auth_state_capsule.dart';
 import 'package:rainbow_stub_consumer/state/models/auth_state.dart';
 import 'package:rainbow_stub_consumer/state/capsules/bubbles_capsule.dart';
 import 'package:rainbow_stub_consumer/state/capsules/messages_capsule.dart';
+import 'package:rainbow_stub_consumer/state/capsules/muc_occupants_capsule.dart';
 import 'package:rainbow_stub_consumer/state/capsules/presence_capsule.dart';
 import 'package:rainbow_stub_consumer/state/capsules/rest_capsule.dart';
+import 'package:rainbow_stub_consumer/state/capsules/room_subject_capsule.dart';
 import 'package:rainbow_stub_consumer/state/capsules/roster_capsule.dart';
 import 'package:rainbow_stub_consumer/state/capsules/xmpp_capsule.dart';
 import 'package:rearch/rearch.dart';
@@ -233,6 +235,78 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
       fail('presenceCapsule never reached the expected state');
+    },
+  );
+
+  test('mucOccupantsCapsule tracks joins and drops on unavailable', () async {
+    const room = 'ops@muc.localhost';
+    // Prime the capsule so the effect subscribes.
+    expect(container.read(mucOccupantsCapsule), isEmpty);
+
+    fakeXmpp.push(
+      const XmppMucOccupant(
+        roomBareJid: room,
+        nick: 'alice',
+        available: true,
+        affiliation: 'owner',
+        role: 'moderator',
+      ),
+    );
+    fakeXmpp.push(
+      const XmppMucOccupant(roomBareJid: room, nick: 'bob', available: true),
+    );
+
+    // Wait for both occupants to land.
+    var reached = false;
+    for (var i = 0; i < 20; i++) {
+      final r = container.read(mucOccupantsCapsule)[room];
+      if (r != null && r.length == 2 && r['alice']?.isOwner == true) {
+        reached = true;
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(reached, isTrue, reason: 'both occupants never joined');
+
+    // Bob leaves — the room drops to a single occupant.
+    fakeXmpp.push(
+      const XmppMucOccupant(roomBareJid: room, nick: 'bob', available: false),
+    );
+    for (var i = 0; i < 20; i++) {
+      final r = container.read(mucOccupantsCapsule)[room];
+      if (r != null && r.length == 1 && r.containsKey('alice')) {
+        return;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    fail('mucOccupantsCapsule never dropped the departed occupant');
+  });
+
+  test(
+    'roomSubjectCapsule tracks the room subject and clears on empty',
+    () async {
+      const room = 'ops@muc.localhost';
+      expect(container.read(roomSubjectCapsule), isEmpty);
+
+      fakeXmpp.push(
+        const XmppRoomSubject(roomBareJid: room, subject: 'Daily standup'),
+      );
+      var reached = false;
+      for (var i = 0; i < 20; i++) {
+        if (container.read(roomSubjectCapsule)[room] == 'Daily standup') {
+          reached = true;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(reached, isTrue, reason: 'subject never landed');
+
+      fakeXmpp.push(const XmppRoomSubject(roomBareJid: room, subject: ''));
+      for (var i = 0; i < 20; i++) {
+        if (!container.read(roomSubjectCapsule).containsKey(room)) return;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      fail('roomSubjectCapsule never cleared the subject');
     },
   );
 

@@ -178,6 +178,38 @@ class XmppPresenceUpdate extends XmppEvent {
   final String? status;
 }
 
+/// XEP-0045 MUC occupant presence — someone joined or left a room (or the
+/// room reflected our own join). [available] is false on `unavailable`.
+class XmppMucOccupant extends XmppEvent {
+  const XmppMucOccupant({
+    required this.roomBareJid,
+    required this.nick,
+    required this.available,
+    this.realJid,
+    this.affiliation = 'none',
+    this.role = 'participant',
+  });
+  final String roomBareJid;
+  final String nick;
+  final bool available;
+  final String? realJid;
+  final String affiliation;
+  final String role;
+}
+
+/// XEP-0045 §7.2.14 room subject — a body-less groupchat `<subject>` from
+/// the room (delivered on join and whenever it changes).
+class XmppRoomSubject extends XmppEvent {
+  const XmppRoomSubject({
+    required this.roomBareJid,
+    required this.subject,
+    this.fromNick = '',
+  });
+  final String roomBareJid;
+  final String subject;
+  final String fromNick;
+}
+
 /// RFC 6121 §3 inbound presence subscription stanza — one of
 /// `subscribe` / `subscribed` / `unsubscribe` / `unsubscribed`. UI can
 /// prompt to approve/deny an inbound `subscribe`, or refresh the roster
@@ -252,6 +284,23 @@ class XmppRetract extends XmppEvent {
   });
   final String fromBare;
   final String targetStanzaId;
+  final bool isGroupChat;
+}
+
+/// XEP-0425 moderation tombstone — a MUC moderator removed the target
+/// message. Rendered as a "removed by a moderator" placeholder.
+class XmppModeration extends XmppEvent {
+  const XmppModeration({
+    required this.fromBare,
+    required this.targetStanzaId,
+    required this.byBare,
+    required this.reason,
+    required this.isGroupChat,
+  });
+  final String fromBare;
+  final String targetStanzaId;
+  final String byBare;
+  final String? reason;
   final bool isGroupChat;
 }
 
@@ -963,6 +1012,28 @@ class RainbowXmppClient {
       return;
     }
 
+    // XEP-0425 moderation tombstone — no body, an `<apply-to
+    // xmlns="urn:xmpp:fasten:0" id="target"><moderated
+    // xmlns="urn:xmpp:message-moderate:0" by="…"><retract
+    // xmlns="urn:xmpp:message-retract:0"/><reason/></moderated></apply-to>`.
+    final applyToEl = el.getElement('apply-to');
+    if (applyToEl != null && _hasXmlns(applyToEl, 'urn:xmpp:fasten:0')) {
+      final moderated = applyToEl.getElement('moderated');
+      if (moderated != null &&
+          _hasXmlns(moderated, 'urn:xmpp:message-moderate:0')) {
+        _events.add(
+          XmppModeration(
+            fromBare: fromBare,
+            targetStanzaId: applyToEl.getAttribute('id') ?? '',
+            byBare: moderated.getAttribute('by') ?? '',
+            reason: moderated.getElement('reason')?.innerText,
+            isGroupChat: el.getAttribute('type') == 'groupchat',
+          ),
+        );
+        return;
+      }
+    }
+
     // MUC group-call marker (`<call xmlns="urn:rainbow:muc-call:1"
     // state="started|ended" sid="…"/>`). Broadcast to bubble members
     // whenever anyone starts or ends a group call in the room.
@@ -984,6 +1055,24 @@ class RainbowXmppClient {
     // Historically emitted as `<sent xmlns="urn:xmpp:sent-ack:1"/>`;
     // now derived from XEP-0198 `<a h="N"/>` in `_handleSmAck`. The
     // legacy detection is gone.
+
+    // XEP-0045 §7.2.14 room subject — a body-less groupchat `<subject>`.
+    // Topic-opening messages carry a body too, so they are not caught here.
+    final subjectEl = el.getElement('subject');
+    if (subjectEl != null &&
+        el.getElement('body') == null &&
+        el.getAttribute('type') == 'groupchat') {
+      _events.add(
+        XmppRoomSubject(
+          roomBareJid: fromBare,
+          subject: subjectEl.innerText,
+          fromNick: from.contains('/')
+              ? from.substring(from.indexOf('/') + 1)
+              : '',
+        ),
+      );
+      return;
+    }
 
     final body = el.getElement('body')?.innerText;
     if (body == null) return;
@@ -1094,6 +1183,28 @@ class RainbowXmppClient {
         ? from.substring(0, from.indexOf('/'))
         : from;
     final type = el.getAttribute('type');
+    // XEP-0045 MUC occupant presence — `from` is room@muc/nick and the
+    // stanza carries a muc#user <x>. Tracked separately from roster
+    // presence so a room JID never lands in the roster presence map.
+    if (from.contains('/')) {
+      for (final c in el.childElements) {
+        if (c.localName == 'x' &&
+            _hasXmlns(c, 'http://jabber.org/protocol/muc#user')) {
+          final item = c.getElement('item');
+          _events.add(
+            XmppMucOccupant(
+              roomBareJid: bare,
+              nick: from.substring(from.indexOf('/') + 1),
+              available: type != 'unavailable',
+              realJid: item?.getAttribute('jid'),
+              affiliation: item?.getAttribute('affiliation') ?? 'none',
+              role: item?.getAttribute('role') ?? 'participant',
+            ),
+          );
+          return;
+        }
+      }
+    }
     // RFC 6121 §3 subscription stanzas surface as a distinct event.
     if (type == 'subscribe' ||
         type == 'subscribed' ||
@@ -1263,6 +1374,29 @@ class RainbowXmppClient {
       '<retract xmlns="urn:xmpp:message-retract:1"'
       ' id="${_esc(targetStanzaId)}"/>'
       '</message>',
+    );
+  }
+
+  /// XEP-0425 moderation — a room moderator retracts another member's
+  /// message [targetStanzaId] in the MUC [roomBareJid]. The server
+  /// enforces owner/moderator privilege and fans out a `<moderated>`
+  /// tombstone (including back to us).
+  void sendModeration({
+    required String roomBareJid,
+    required String targetStanzaId,
+    String? reason,
+  }) {
+    final reasonXml = (reason != null && reason.isNotEmpty)
+        ? '<reason>${_esc(reason)}</reason>'
+        : '';
+    final id = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    _send(
+      '<iq type="set" id="$id" to="${_esc(roomBareJid)}">'
+      '<apply-to xmlns="urn:xmpp:fasten:0" id="${_esc(targetStanzaId)}">'
+      '<moderate xmlns="urn:xmpp:message-moderate:0">'
+      '<retract xmlns="urn:xmpp:message-retract:0"/>'
+      '$reasonXml'
+      '</moderate></apply-to></iq>',
     );
   }
 

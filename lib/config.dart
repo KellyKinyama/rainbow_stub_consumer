@@ -59,7 +59,7 @@ class AppConfig {
       // the stub.
       appAuth:
           'Basic NjVjNjgxYzAxYzhmMTFlOWFkZDg5MzJiMzU4ZWY4MWQ6VVlkdTN3Q1hUZGZ5akltaFVSbklrWjB0YWM1SjlYU0xzeklLQlJVVVdWQjM1YjZuVDNmV1YyQmhBR2hvamRCUQ==',
-      xmppDomain: host,
+      xmppDomain: _defaultXmppDomain(host),
       sfuUrl: sfu.isEmpty ? null : Uri.parse(sfu),
     );
   }
@@ -84,5 +84,13 @@ class AppConfig {
     const override = String.fromEnvironment('STUB_PORT');
     if (override.isNotEmpty) return override;
     return '8443';
+  }
+
+  // The XMPP domain can differ from the HTTP host: on the Android
+  // emulator the host is 10.0.2.2 but the stub's JID domain is localhost.
+  static String _defaultXmppDomain(String host) {
+    const override = String.fromEnvironment('XMPP_DOMAIN');
+    if (override.isNotEmpty) return override;
+    return host;
   }
 }
