@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_core/flutter_chat_core.dart';
 
+import 'message_styling.dart';
 import 'theme_tokens.dart';
 
 /// Quick-react emoji set shown at the top of the long-press sheet.
@@ -468,13 +469,14 @@ class PhoneTextBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                message.text,
-                style: TextStyle(
+              StyledMessageText(
+                text: message.text,
+                baseStyle: TextStyle(
                   color: palette.textPrimary,
                   fontSize: PhoneTokens.titleFontSize,
                   height: 1.4,
                 ),
+                moderated: message.metadata?['moderated'] == true,
               ),
               const SizedBox(height: 2),
               Row(
