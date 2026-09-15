@@ -178,6 +178,25 @@ class XmppPresenceUpdate extends XmppEvent {
   final String? status;
 }
 
+/// XEP-0045 MUC occupant presence — someone joined or left a room (or the
+/// room reflected our own join). [available] is false on `unavailable`.
+class XmppMucOccupant extends XmppEvent {
+  const XmppMucOccupant({
+    required this.roomBareJid,
+    required this.nick,
+    required this.available,
+    this.realJid,
+    this.affiliation = 'none',
+    this.role = 'participant',
+  });
+  final String roomBareJid;
+  final String nick;
+  final bool available;
+  final String? realJid;
+  final String affiliation;
+  final String role;
+}
+
 /// RFC 6121 §3 inbound presence subscription stanza — one of
 /// `subscribe` / `subscribed` / `unsubscribe` / `unsubscribed`. UI can
 /// prompt to approve/deny an inbound `subscribe`, or refresh the roster
@@ -1133,6 +1152,28 @@ class RainbowXmppClient {
         ? from.substring(0, from.indexOf('/'))
         : from;
     final type = el.getAttribute('type');
+    // XEP-0045 MUC occupant presence — `from` is room@muc/nick and the
+    // stanza carries a muc#user <x>. Tracked separately from roster
+    // presence so a room JID never lands in the roster presence map.
+    if (from.contains('/')) {
+      for (final c in el.childElements) {
+        if (c.localName == 'x' &&
+            _hasXmlns(c, 'http://jabber.org/protocol/muc#user')) {
+          final item = c.getElement('item');
+          _events.add(
+            XmppMucOccupant(
+              roomBareJid: bare,
+              nick: from.substring(from.indexOf('/') + 1),
+              available: type != 'unavailable',
+              realJid: item?.getAttribute('jid'),
+              affiliation: item?.getAttribute('affiliation') ?? 'none',
+              role: item?.getAttribute('role') ?? 'participant',
+            ),
+          );
+          return;
+        }
+      }
+    }
     // RFC 6121 §3 subscription stanzas surface as a distinct event.
     if (type == 'subscribe' ||
         type == 'subscribed' ||

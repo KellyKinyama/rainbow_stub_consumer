@@ -21,6 +21,7 @@ import 'emoji_picker.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
 import 'phone_round_button.dart';
+import 'room_occupants_sheet.dart';
 import 'shared_files_page.dart';
 import 'theme_tokens.dart';
 
@@ -236,6 +237,11 @@ class BubbleChatPage extends RearchConsumer {
           ],
         ),
         actions: [
+          PhoneRoundButton(
+            tooltip: 'Room occupants',
+            icon: Icons.people_outline,
+            onPressed: () => showRoomOccupants(context, threadKey),
+          ),
           PhoneRoundButton(
             tooltip: 'Shared files',
             icon: Icons.folder_open,
