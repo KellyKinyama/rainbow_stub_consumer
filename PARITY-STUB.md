@@ -48,20 +48,27 @@ specifically. The one real gap was C1 (moderation), now closed.
 - Tests: [phase_o_moderation_test.dart](test/phase_o_moderation_test.dart)
   (3 cases, green).
 
+### Borrow · XEP-0393 message styling + links — ✅ (`4d…`)
+
+- Bold/italic/strike/inline-code + auto-linked http(s)/mailto URLs in the
+  message bubble, ported from xmpp-web's `Message.vue` grammar. Pure
+  client, wire-compatible (the stub forwards `<body>` opaquely).
+- New [message_styling.dart](lib/ui/message_styling.dart) (testable
+  `parseMessageStyle` + `StyledMessageText` widget); wired into
+  `PhoneTextBubble` ([chat_widgets.dart](lib/ui/chat_widgets.dart)).
+  Boundary/whitespace guards keep `my_file_name` and `a * b` literal.
+  Tombstones render muted italic. Tests:
+  [message_styling_test.dart](test/message_styling_test.dart) (8 cases).
+
+### P1 · Housekeeping: fix stale test fakes — ✅
+
+- `test/phase_e_bubble_chat_test.dart`'s `_FakeXmpp.sendGroupChat` now
+  carries `thread`/`subject` to match the real signature; the file loads
+  and passes (5/5). The suite has no remaining load failures.
+
 ---
 
 ## 2. Remaining — optional, low priority
-
-### P1 · Housekeeping: fix stale test fakes (S) — ⬜
-
-- **What:** `test/phase_e_bubble_chat_test.dart`'s `_FakeXmpp.sendGroupChat`
-  is out of sync with the real signature and **fails to load** (pre-existing,
-  not from the C1 patch — confirmed on a clean tree). Bring the fake's
-  named args back in line with `RainbowXmppClient.sendGroupChat`.
-- **Where:** [phase_e_bubble_chat_test.dart](test/phase_e_bubble_chat_test.dart).
-- **Acceptance:** `flutter test test/phase_e_bubble_chat_test.dart` loads and
-  passes; full suite has no load failures.
-- **Value:** unblocks a currently-dead test file. Highest ROI of what's left.
 
 ### P2 · XEP-0359 stanza-id consumption (S) — ⬜
 
