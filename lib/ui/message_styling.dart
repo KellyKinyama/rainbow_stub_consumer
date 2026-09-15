@@ -25,13 +25,11 @@ class StyledRun {
   int get hashCode => Object.hash(kind, text, href);
 
   @override
-  String toString() => 'StyledRun($kind, "$text"${href != null ? ', $href' : ''})';
+  String toString() =>
+      'StyledRun($kind, "$text"${href != null ? ', $href' : ''})';
 }
 
-final _linkRe = RegExp(
-  r'(?:https?://|mailto:)[^\s]+',
-  caseSensitive: false,
-);
+final _linkRe = RegExp(r'(?:https?://|mailto:)[^\s]+', caseSensitive: false);
 const _openBoundary = ' \n\t([{<"\'';
 const _closeBoundary = ' \n\t.,;:!?)]}>"\'';
 const _trailingTrim = '.,;:!?)]}>"\'';
