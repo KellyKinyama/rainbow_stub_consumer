@@ -60,6 +60,17 @@ specifically. The one real gap was C1 (moderation), now closed.
   Tombstones render muted italic. Tests:
   [message_styling_test.dart](test/message_styling_test.dart) (8 cases).
 
+### Borrow · composer emoji picker — ✅
+
+- Left-aligned emoji button in the composer's `topWidget` slot opens a
+  modal grid; the choice inserts at the caret. Ported from xmpp-web's
+  `EmojiPicker.vue` (the client previously only had a long-press
+  quick-react row, no way to compose emoji). Dependency-free curated set.
+- New [emoji_picker.dart](lib/ui/emoji_picker.dart) (testable
+  `insertEmoji` + `showEmojiPicker` + `EmojiComposerButton`), wired into
+  both `chat_page` and `bubble_chat_page` composers. Tests:
+  [emoji_picker_test.dart](test/emoji_picker_test.dart) (4 cases).
+
 ### P1 · Housekeeping: fix stale test fakes — ✅
 
 - `test/phase_e_bubble_chat_test.dart`'s `_FakeXmpp.sendGroupChat` now
