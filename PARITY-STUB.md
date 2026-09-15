@@ -71,6 +71,20 @@ specifically. The one real gap was C1 (moderation), now closed.
   both `chat_page` and `bubble_chat_page` composers. Tests:
   [emoji_picker_test.dart](test/emoji_picker_test.dart) (4 cases).
 
+### Borrow · live room-occupants panel — ✅
+
+- A "Room occupants" app-bar button in the bubble chat opens a live sheet
+  of MUC occupants (nick/role, owner starred). Ported from xmpp-web's
+  RoomOccupants. Uses the stub's B2 join presences.
+- The client now parses `<presence from=room/nick><x
+  xmlns=muc#user><item …/>` into an `XmppMucOccupant` event (early-return
+  keeps room JIDs out of the roster presence map). New
+  [muc_occupants_capsule.dart](lib/state/capsules/muc_occupants_capsule.dart)
+  (`roomBareJid → nick → occupant`) +
+  [room_occupants_sheet.dart](lib/ui/room_occupants_sheet.dart). Topic
+  threading is untouched. Test: `mucOccupantsCapsule` join/leave in
+  [capsules_test.dart](test/capsules_test.dart).
+
 ### P1 · Housekeeping: fix stale test fakes — ✅
 
 - `test/phase_e_bubble_chat_test.dart`'s `_FakeXmpp.sendGroupChat` now
