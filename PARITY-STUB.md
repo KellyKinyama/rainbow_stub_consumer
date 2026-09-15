@@ -85,6 +85,17 @@ specifically. The one real gap was C1 (moderation), now closed.
   threading is untouched. Test: `mucOccupantsCapsule` join/leave in
   [capsules_test.dart](test/capsules_test.dart).
 
+### Borrow · pinned room-subject banner — ✅
+
+- A pinned XEP-0045 room subject header above the message list, ported
+  from xmpp-web's RoomSubject. The client now parses body-less groupchat
+  `<subject>` into an `XmppRoomSubject` event (topic-opening messages
+  carry a body, so they're unaffected — topics stay intact). New
+  [room_subject_capsule.dart](lib/state/capsules/room_subject_capsule.dart)
+  + [room_subject_banner.dart](lib/ui/room_subject_banner.dart), wired
+  into `bubble_chat_page`. Test: `roomSubjectCapsule` set/clear in
+  [capsules_test.dart](test/capsules_test.dart).
+
 ### P1 · Housekeeping: fix stale test fakes — ✅
 
 - `test/phase_e_bubble_chat_test.dart`'s `_FakeXmpp.sendGroupChat` now
