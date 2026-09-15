@@ -282,30 +282,33 @@ void main() {
     fail('mucOccupantsCapsule never dropped the departed occupant');
   });
 
-  test('roomSubjectCapsule tracks the room subject and clears on empty', () async {
-    const room = 'ops@muc.localhost';
-    expect(container.read(roomSubjectCapsule), isEmpty);
+  test(
+    'roomSubjectCapsule tracks the room subject and clears on empty',
+    () async {
+      const room = 'ops@muc.localhost';
+      expect(container.read(roomSubjectCapsule), isEmpty);
 
-    fakeXmpp.push(
-      const XmppRoomSubject(roomBareJid: room, subject: 'Daily standup'),
-    );
-    var reached = false;
-    for (var i = 0; i < 20; i++) {
-      if (container.read(roomSubjectCapsule)[room] == 'Daily standup') {
-        reached = true;
-        break;
+      fakeXmpp.push(
+        const XmppRoomSubject(roomBareJid: room, subject: 'Daily standup'),
+      );
+      var reached = false;
+      for (var i = 0; i < 20; i++) {
+        if (container.read(roomSubjectCapsule)[room] == 'Daily standup') {
+          reached = true;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
       }
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    expect(reached, isTrue, reason: 'subject never landed');
+      expect(reached, isTrue, reason: 'subject never landed');
 
-    fakeXmpp.push(const XmppRoomSubject(roomBareJid: room, subject: ''));
-    for (var i = 0; i < 20; i++) {
-      if (!container.read(roomSubjectCapsule).containsKey(room)) return;
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-    }
-    fail('roomSubjectCapsule never cleared the subject');
-  });
+      fakeXmpp.push(const XmppRoomSubject(roomBareJid: room, subject: ''));
+      for (var i = 0; i < 20; i++) {
+        if (!container.read(roomSubjectCapsule).containsKey(room)) return;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      fail('roomSubjectCapsule never cleared the subject');
+    },
+  );
 
   test(
     'messagesCapsule(threadKey) appends only messages for that thread',
