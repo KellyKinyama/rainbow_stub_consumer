@@ -36,6 +36,10 @@ class DeleteChoice extends MessageActionChoice {
   const DeleteChoice();
 }
 
+class ModerateChoice extends MessageActionChoice {
+  const ModerateChoice();
+}
+
 /// Modal bottom sheet with quick-react row + Reply/Edit/Copy/Delete.
 /// Edit + Delete surface only for my own text messages.
 Future<MessageActionChoice?> showMessageActions(
@@ -44,6 +48,7 @@ Future<MessageActionChoice?> showMessageActions(
   required String currentUserId,
   required bool allowEdit,
   required bool allowDelete,
+  bool allowModerate = false,
 }) async {
   final choice = await showModalBottomSheet<String>(
     context: context,
@@ -105,6 +110,18 @@ Future<MessageActionChoice?> showMessageActions(
               ),
               onTap: () => Navigator.of(bs).pop('delete'),
             ),
+          if (allowModerate)
+            ListTile(
+              leading: Icon(
+                Icons.block,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                'Remove (moderator)',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: () => Navigator.of(bs).pop('moderate'),
+            ),
         ],
       ),
     ),
@@ -119,6 +136,7 @@ Future<MessageActionChoice?> showMessageActions(
     'copy' => const CopyChoice(),
     'forward' => const ForwardChoice(),
     'delete' => const DeleteChoice(),
+    'moderate' => const ModerateChoice(),
     _ => null,
   };
 }

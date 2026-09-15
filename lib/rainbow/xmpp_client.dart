@@ -255,6 +255,23 @@ class XmppRetract extends XmppEvent {
   final bool isGroupChat;
 }
 
+/// XEP-0425 moderation tombstone — a MUC moderator removed the target
+/// message. Rendered as a "removed by a moderator" placeholder.
+class XmppModeration extends XmppEvent {
+  const XmppModeration({
+    required this.fromBare,
+    required this.targetStanzaId,
+    required this.byBare,
+    required this.reason,
+    required this.isGroupChat,
+  });
+  final String fromBare;
+  final String targetStanzaId;
+  final String byBare;
+  final String? reason;
+  final bool isGroupChat;
+}
+
 /// Server-issued sent-ack — the corresponding local echo can transition
 /// from `MessageStatus.sending` to `sent`.
 class XmppSentAck extends XmppEvent {
@@ -963,6 +980,28 @@ class RainbowXmppClient {
       return;
     }
 
+    // XEP-0425 moderation tombstone — no body, an `<apply-to
+    // xmlns="urn:xmpp:fasten:0" id="target"><moderated
+    // xmlns="urn:xmpp:message-moderate:0" by="…"><retract
+    // xmlns="urn:xmpp:message-retract:0"/><reason/></moderated></apply-to>`.
+    final applyToEl = el.getElement('apply-to');
+    if (applyToEl != null && _hasXmlns(applyToEl, 'urn:xmpp:fasten:0')) {
+      final moderated = applyToEl.getElement('moderated');
+      if (moderated != null &&
+          _hasXmlns(moderated, 'urn:xmpp:message-moderate:0')) {
+        _events.add(
+          XmppModeration(
+            fromBare: fromBare,
+            targetStanzaId: applyToEl.getAttribute('id') ?? '',
+            byBare: moderated.getAttribute('by') ?? '',
+            reason: moderated.getElement('reason')?.innerText,
+            isGroupChat: el.getAttribute('type') == 'groupchat',
+          ),
+        );
+        return;
+      }
+    }
+
     // MUC group-call marker (`<call xmlns="urn:rainbow:muc-call:1"
     // state="started|ended" sid="…"/>`). Broadcast to bubble members
     // whenever anyone starts or ends a group call in the room.
@@ -1263,6 +1302,29 @@ class RainbowXmppClient {
       '<retract xmlns="urn:xmpp:message-retract:1"'
       ' id="${_esc(targetStanzaId)}"/>'
       '</message>',
+    );
+  }
+
+  /// XEP-0425 moderation — a room moderator retracts another member's
+  /// message [targetStanzaId] in the MUC [roomBareJid]. The server
+  /// enforces owner/moderator privilege and fans out a `<moderated>`
+  /// tombstone (including back to us).
+  void sendModeration({
+    required String roomBareJid,
+    required String targetStanzaId,
+    String? reason,
+  }) {
+    final reasonXml = (reason != null && reason.isNotEmpty)
+        ? '<reason>${_esc(reason)}</reason>'
+        : '';
+    final id = DateTime.now().microsecondsSinceEpoch.toRadixString(16);
+    _send(
+      '<iq type="set" id="$id" to="${_esc(roomBareJid)}">'
+      '<apply-to xmlns="urn:xmpp:fasten:0" id="${_esc(targetStanzaId)}">'
+      '<moderate xmlns="urn:xmpp:message-moderate:0">'
+      '<retract xmlns="urn:xmpp:message-retract:0"/>'
+      '$reasonXml'
+      '</moderate></apply-to></iq>',
     );
   }
 

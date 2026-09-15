@@ -167,12 +167,16 @@ class BubbleChatPage extends RearchConsumer {
       required LongPressStartDetails details,
     }) async {
       final isMine = m.authorId == currentUserId;
+      final isOwner = bubble.members.any(
+        (mem) => mem.userId == currentUserId && mem.role == 'owner',
+      );
       final choice = await showMessageActions(
         ctx,
         target: m,
         currentUserId: currentUserId,
         allowEdit: isMine && m is TextMessage,
         allowDelete: isMine,
+        allowModerate: isOwner && !isMine,
       );
       if (choice == null) return;
       switch (choice) {
@@ -195,6 +199,8 @@ class BubbleChatPage extends RearchConsumer {
           }
         case DeleteChoice():
           actions.retractGroup(bubble, targetStanzaId: m.id);
+        case ModerateChoice():
+          actions.moderateGroup(bubble, targetStanzaId: m.id);
         default:
           break;
       }

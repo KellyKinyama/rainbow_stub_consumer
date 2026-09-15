@@ -423,6 +423,22 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
               await _applyRetract(controller, e.targetStanzaId);
             });
 
+        // XEP-0425 moderation — replace the target message with a
+        // "removed by a moderator" tombstone (the stub fans the tombstone
+        // back to the moderator too, so this also covers my own action).
+        final moderationSub = events
+            .where((e) => e is XmppModeration)
+            .cast<XmppModeration>()
+            .listen((e) async {
+              if (myGeneration != _cacheGeneration) return;
+              final belongs = e.isGroupChat
+                  ? e.fromBare.contains('@muc.') &&
+                        _bareJid(e.fromBare) == threadKey
+                  : _matchesThread(e.fromBare, threadKey);
+              if (!belongs) return;
+              await _applyModeration(controller, e.targetStanzaId, e.reason);
+            });
+
         // Server-issued sent-ack — flip our locally-echoed message
         // from MessageStatus.sending → sent.
         final sentAckSub = events
@@ -472,6 +488,7 @@ Capsule<InMemoryChatController> chatControllerCapsule(ThreadKey threadKey) {
           reactionsSub.cancel();
           correctionSub.cancel();
           retractSub.cancel();
+          moderationSub.cancel();
           sentAckSub.cancel();
           _threadUpdaters[threadKey]?.remove(handleUpdate);
         };
@@ -939,6 +956,35 @@ Future<void> _applyRetract(
       .firstOrNull;
   if (target == null) return;
   await controller.removeMessage(target);
+}
+
+/// XEP-0425 moderation handler — replaces the target message in place
+/// with a "removed by a moderator" tombstone (keeping its slot in the
+/// timeline), optionally annotated with the moderator's reason.
+Future<void> _applyModeration(
+  InMemoryChatController controller,
+  String targetStanzaId,
+  String? reason,
+) async {
+  final target = controller.messages
+      .where((m) => m.id == targetStanzaId)
+      .firstOrNull;
+  if (target == null) return;
+  final label = (reason == null || reason.isEmpty)
+      ? 'Message removed by a moderator'
+      : 'Message removed by a moderator: $reason';
+  final tombstone = Message.text(
+    id: target.id,
+    authorId: target.authorId,
+    createdAt: target.createdAt,
+    sentAt: target.sentAt,
+    text: label,
+    metadata: <String, dynamic>{
+      'moderated': true,
+      if (reason != null && reason.isNotEmpty) 'moderationReason': reason,
+    },
+  );
+  await controller.updateMessage(target, tombstone);
 }
 
 /// Server sent-ack — clears the "sending" status and stamps sentAt.
