@@ -21,6 +21,7 @@ import '../state/models/presence.dart';
 import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'chat_wallpaper.dart';
+import 'emoji_picker.dart';
 import 'forward_picker.dart';
 import 'phone_round_button.dart';
 import 'shared_files_page.dart';
@@ -338,8 +339,10 @@ class ChatPage extends RearchConsumer {
                           itemBuilder: itemBuilder,
                           scrollController: scrollCtrl,
                         ),
-                    composerBuilder: (ctx) =>
-                        Composer(textEditingController: input),
+                    composerBuilder: (ctx) => Composer(
+                      textEditingController: input,
+                      topWidget: EmojiComposerButton(controller: input),
+                    ),
                     textMessageBuilder:
                         (ctx, msg, index, {required isSentByMe, groupStatus}) =>
                             wrapChatBubble(

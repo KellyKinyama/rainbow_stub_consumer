@@ -17,6 +17,7 @@ import 'attachment_picker.dart';
 import 'chat_widgets.dart';
 import 'chat_wallpaper.dart';
 import 'bubble_details_page.dart';
+import 'emoji_picker.dart';
 import 'forward_picker.dart';
 import 'group_call_banner.dart';
 import 'phone_round_button.dart';
@@ -287,8 +288,10 @@ class BubbleChatPage extends RearchConsumer {
                   resolveUser: resolveUser,
                   chatController: topicController,
                   builders: Builders(
-                    composerBuilder: (ctx) =>
-                        Composer(textEditingController: input),
+                    composerBuilder: (ctx) => Composer(
+                      textEditingController: input,
+                      topWidget: EmojiComposerButton(controller: input),
+                    ),
                     textMessageBuilder:
                         (ctx, msg, index, {required isSentByMe, groupStatus}) =>
                             wrapChatBubble(
