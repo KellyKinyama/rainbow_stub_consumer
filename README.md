@@ -119,6 +119,9 @@ reachable at the configured base URL.
 - [x] XEP-0444 reactions (tap chip to toggle)
 - [x] XEP-0308 corrections ("Edit")
 - [x] XEP-0424 retracts ("Delete for everyone")
+- [x] XEP-0425 moderation — owners "Remove (moderator)" others' MUC
+      messages; incoming tombstones render as a "removed by a moderator"
+      placeholder
 - [x] XEP-0461 replies with quoted preview
 - [x] XEP-0184 delivery receipts + XEP-0333 chat-marker `displayed`
 - [x] XEP-0085 chat states (composing / paused)
