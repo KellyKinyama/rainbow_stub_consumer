@@ -13,9 +13,8 @@ class RoomOccupantsSheet extends RearchConsumer {
   @override
   Widget build(BuildContext context, WidgetHandle use) {
     final rooms = use(mucOccupantsCapsule);
-    final occupants =
-        (rooms[roomJid]?.values.toList() ?? <MucOccupant>[])
-          ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+    final occupants = (rooms[roomJid]?.values.toList() ?? <MucOccupant>[])
+      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
 
     return SafeArea(
       child: Column(
